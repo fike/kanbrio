@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "fernandoike",
+  "project_id": "7de64c7b-9044-4937-936b-13d49708f5a5"
+}
