@@ -1,0 +1,14 @@
+/Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/deps/serde-0d3776f45db92b62.d: /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/build/serde-794e2c02a520af9a/out/private.rs
+
+/Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/deps/libserde-0d3776f45db92b62.rlib: /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/build/serde-794e2c02a520af9a/out/private.rs
+
+/Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/deps/libserde-0d3776f45db92b62.rmeta: /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/build/serde-794e2c02a520af9a/out/private.rs
+
+/Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/fernandoike/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/build/serde-794e2c02a520af9a/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/fernandoike/projects/pets/kanbrio/apps/api/target/debug/build/serde-794e2c02a520af9a/out

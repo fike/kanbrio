@@ -1,0 +1,2 @@
+{"id":"int-01816815","kind":"field_change","created_at":"2026-05-24T21:29:20.449827Z","actor":"Fernando Ike","issue_id":"kanbrio-iiv","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
+{"id":"int-48feb166","kind":"field_change","created_at":"2026-05-24T21:46:28.570813Z","actor":"Fernando Ike","issue_id":"kanbrio-iiv","extra":{"field":"status","new_value":"closed","old_value":"in_progress"}}

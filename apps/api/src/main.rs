@@ -1,3 +1,19 @@
-fn main() {
-    println!("Hello, world!");
+use axum::{routing::get, Router};
+use std::net::SocketAddr;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Initialize tracing
+    tracing_subscriber::fmt::init();
+
+    let app = Router::new()
+        .route("/", get(|| async { "Kanbrio API" }));
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    tracing::info!("listening on {}", addr);
+    
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+
+    Ok(())
 }
