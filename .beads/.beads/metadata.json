@@ -1,7 +1,0 @@
-{
-  "database": "beads.db",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "kanbrio",
-  "project_id": "44d74794-3b7b-4cb6-8f5e-a0917e2ff66b"
-}
