@@ -76,3 +76,21 @@ This section defines the structural components for the Kanban experience, emphas
 - Clicking a **Parent Breadcrumb** should navigate to or focus the parent card.
 - Clicking the **Children Indicator** should open a side-panel or "Subtree View" showing the full hierarchical branch.
 - Moving a card between columns/swimlanes must trigger the `duration-300 ease-complex` transition.
+
+### 7.4 Subtree View (Hierarchy Explorer)
+- **Trigger:** Clicking the `Children Indicator` on a card.
+- **Visual:** A slide-over panel (Right side, 400px width) or a modal.
+- **Content:**
+  - **Header:** Current card title + "Hierarchy".
+  - **Tree Structure:**
+    - Indented list showing ancestors (as breadcrumbs) and descendants (as a nested list).
+    - Use `border-l-2 border-base` for indentation lines.
+    - Each node: `Title`, `Status Tag`, and `Assignee`.
+- **Interactions:**
+  - Clicking any node in the tree focuses that card on the board (if present) or navigates to its context.
+  - "Add Child" button at each level to quickly create subtasks.
+
+### 7.5 Recursive Breadcrumbs
+- **Location:** Top of the Board view when a specific parent filter is active.
+- **Format:** `Workspace > Parent > Child > ...`
+- **Style:** `text-sm text-secondary`, separator `bg-secondary/20` (chevron icon).
