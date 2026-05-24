@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Backgrounds */
+    --color-bg-base: #F9FAFB;
+    --color-bg-surface: #FFFFFF;
+    --color-bg-elevated: #F3F4F6;
+    
+    /* Text */
+    --color-text-primary: #111827;
+    --color-text-secondary: #4B5563;
+    --color-text-tertiary: #9CA3AF;
+    
+    /* Borders */
+    --color-border-base: #E5E7EB;
+    
+    /* Semantic & Accents */
+    --color-accent-primary: #2563EB;
+    --color-status-todo: #64748B;
+    --color-status-doing: #EAB308;
+    --color-status-done: #22C55E;
+    --color-status-blocked: #EF4444;
+  }
+
+  .dark {
+    /* Backgrounds */
+    --color-bg-base: #0F172A;
+    --color-bg-surface: #1E293B;
+    --color-bg-elevated: #334155;
+    
+    /* Text */
+    --color-text-primary: #F8FAFC;
+    --color-text-secondary: #94A3B8;
+    --color-text-tertiary: #64748B;
+    
+    /* Borders */
+    --color-border-base: #334155;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-base text-primary font-sans antialiased;
+  }
+
+  /* Universal Focus Ring for Accessibility */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-accent-primary ring-offset-2 ring-offset-base;
+  }
+}

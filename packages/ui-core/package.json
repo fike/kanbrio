@@ -1,0 +1,14 @@
+{
+  "name": "@kanbrio/ui-core",
+  "version": "0.1.0",
+  "description": "Core UI Foundation & Design System Tokens for Kanbrio",
+  "main": "tailwind.config.js",
+  "scripts": {
+    "lint": "echo 'No linting yet'"
+  },
+  "dependencies": {
+    "tailwindcss": "^3.4.0"
+  },
+  "author": "",
+  "license": "ISC"
+}

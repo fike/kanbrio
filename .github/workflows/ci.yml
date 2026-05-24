@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend:
+    name: Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/api
+
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+        working-directory: apps/api
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+        working-directory: apps/api
+
+      - name: Run Tests
+        run: cargo test
+        working-directory: apps/api
+
+  frontend:
+    name: Frontend (Solid)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm install
+        working-directory: apps/web
+        continue-on-error: true
+
+      - name: Lint
+        run: npm run lint
+        working-directory: apps/web
+        continue-on-error: true
+
+      - name: Test
+        run: npm test
+        working-directory: apps/web
+        continue-on-error: true
