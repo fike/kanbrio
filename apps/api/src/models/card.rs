@@ -1,7 +1,7 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Card {
@@ -35,24 +35,20 @@ use std::collections::HashMap;
 
 impl Card {
     #[tracing::instrument(skip(pool))]
-    pub async fn create(
-        pool: &sqlx::PgPool,
-        data: CreateCard,
-    ) -> Result<Self, crate::AppError> {
+    pub async fn create(pool: &sqlx::PgPool, data: CreateCard) -> Result<Self, crate::AppError> {
         let mut tx = pool.begin().await?;
 
         // 1. Validate parent workspace alignment
         if let Some(parent_id) = data.parent_id {
-            let parent_workspace_id: (Uuid,) = sqlx::query_as(
-                "SELECT workspace_id FROM cards WHERE id = $1"
-            )
-            .bind(parent_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| match e {
-                sqlx::Error::RowNotFound => crate::AppError::NotFound,
-                _ => crate::AppError::Database(e),
-            })?;
+            let parent_workspace_id: (Uuid,) =
+                sqlx::query_as("SELECT workspace_id FROM cards WHERE id = $1")
+                    .bind(parent_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(|e| match e {
+                        sqlx::Error::RowNotFound => crate::AppError::NotFound,
+                        _ => crate::AppError::Database(e),
+                    })?;
 
             if parent_workspace_id.0 != data.workspace_id {
                 return Err(anyhow::anyhow!("Parent card belongs to a different workspace").into());
@@ -78,7 +74,7 @@ impl Card {
             r#"
             INSERT INTO card_transitions (card_id, transition_type, to_column_id)
             VALUES ($1, 'create', $2)
-            "#
+            "#,
         )
         .bind(card.id)
         .bind(card.current_column_id)
@@ -134,10 +130,11 @@ impl Card {
         let root_card = root_card.ok_or(crate::AppError::NotFound)?;
 
         fn build_tree(
-            current: Card, 
-            nodes_by_parent: &HashMap<Option<Uuid>, Vec<Card>>
+            current: Card,
+            nodes_by_parent: &HashMap<Option<Uuid>, Vec<Card>>,
         ) -> CardHierarchy {
-            let children = nodes_by_parent.get(&Some(current.id))
+            let children = nodes_by_parent
+                .get(&Some(current.id))
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()

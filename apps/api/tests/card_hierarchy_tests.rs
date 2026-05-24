@@ -45,14 +45,14 @@ async fn test_card_hierarchy(pool: sqlx::PgPool) -> anyhow::Result<()> {
 
     // 4. Fetch hierarchy
     let hierarchy = Card::get_hierarchy(&pool, root_card.id).await?;
-    
+
     assert_eq!(hierarchy.card.id, root_card.id);
     assert_eq!(hierarchy.children.len(), 1);
-    
+
     let child_node = &hierarchy.children[0];
     assert_eq!(child_node.card.id, child_card.id);
     assert_eq!(child_node.children.len(), 1);
-    
+
     let grandchild_node = &child_node.children[0];
     assert_eq!(grandchild_node.card.id, grandchild_card.id);
     assert_eq!(grandchild_node.children.len(), 0);
