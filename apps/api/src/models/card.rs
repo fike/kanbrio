@@ -33,7 +33,91 @@ pub struct CardHierarchy {
 
 use std::collections::HashMap;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MoveCard {
+    pub card_id: Uuid,
+    pub workspace_id: Uuid, // Security: Required for isolation
+    pub to_column_id: Uuid,
+    pub to_swimlane_id: Uuid,
+    pub user_id: Option<Uuid>,
+}
+
 impl Card {
+    #[tracing::instrument(skip(pool))]
+    pub async fn move_to(
+        pool: &sqlx::PgPool,
+        data: MoveCard,
+    ) -> Result<Self, crate::AppError> {
+        let mut tx = pool.begin().await?;
+
+        // 1. Get current state with workspace isolation
+        let current_card = sqlx::query_as::<_, Card>(
+            "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE"
+        )
+        .bind(data.card_id)
+        .bind(data.workspace_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => crate::AppError::NotFound,
+            _ => crate::AppError::Database(e),
+        })?;
+
+        // 2. Validate target column/swimlane workspace alignment
+        let target_col_ws: (Uuid,) = sqlx::query_as("SELECT workspace_id FROM columns WHERE id = $1")
+            .bind(data.to_column_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        
+        let target_lane_ws: (Uuid,) = sqlx::query_as("SELECT workspace_id FROM swimlanes WHERE id = $1")
+            .bind(data.to_swimlane_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+        if target_col_ws.0 != data.workspace_id || target_lane_ws.0 != data.workspace_id {
+            return Err(anyhow::anyhow!("Target column or swimlane belongs to a different workspace").into());
+        }
+
+        // 3. Perform the move
+        let updated_card = sqlx::query_as::<_, Card>(
+            r#"
+            UPDATE cards 
+            SET current_column_id = $1, current_swimlane_id = $2, updated_at = NOW()
+            WHERE id = $3
+            RETURNING *
+            "#
+        )
+        .bind(data.to_column_id)
+        .bind(data.to_swimlane_id)
+        .bind(data.card_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        // 3. Log transition (Issue #3)
+        sqlx::query(
+            r#"
+            INSERT INTO card_transitions (
+                card_id, user_id, transition_type, 
+                from_column_id, to_column_id, 
+                from_swimlane_id, to_swimlane_id
+            )
+            VALUES ($1, $2, 'move', $3, $4, $5, $6)
+            "#
+        )
+        .bind(updated_card.id)
+        .bind(data.user_id)
+        .bind(current_card.current_column_id)
+        .bind(updated_card.current_column_id)
+        .bind(current_card.current_swimlane_id)
+        .bind(updated_card.current_swimlane_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(updated_card)
+    }
+
     #[tracing::instrument(skip(pool))]
     pub async fn create(pool: &sqlx::PgPool, data: CreateCard) -> Result<Self, crate::AppError> {
         let mut tx = pool.begin().await?;
