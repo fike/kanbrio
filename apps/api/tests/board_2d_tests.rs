@@ -2,7 +2,7 @@ use kanbrio_api::models::board::{BoardState, Column, Swimlane};
 use kanbrio_api::models::card::{Card, CreateCard, MoveCard};
 use uuid::Uuid;
 
-#[sqlx::test(migrations = "migrations")]
+#[sqlx::test]
 async fn test_board_2d_context(pool: sqlx::PgPool) -> anyhow::Result<()> {
     // 1. Manually run migrations (as established in Issue #1 tests)
     sqlx::migrate!("./migrations").run(&pool).await?;
