@@ -3,12 +3,24 @@ use uuid::Uuid;
 
 #[sqlx::test]
 async fn test_card_hierarchy(pool: sqlx::PgPool) -> anyhow::Result<()> {
-    sqlx::migrate!().run(&pool).await?;
-    let workspace_id = Uuid::new_v4();
-    let column_id = Uuid::new_v4();
-    let swimlane_id = Uuid::new_v4();
+    // 1. Manually run migrations (as established in Issue #1 tests)
+    sqlx::migrate!("./migrations").run(&pool).await?;
 
-    // 1. Create root card
+    let workspace_id = Uuid::new_v4();
+
+    // 2. Create valid board structure to satisfy foreign keys
+    let column: (Uuid,) = sqlx::query_as(
+        "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'Test Col', 0) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let swimlane: (Uuid,) = sqlx::query_as(
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Test Lane', 0) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let column_id = column.0;
+    let swimlane_id = swimlane.0;
+
+    // 3. Create root card
     let root_data = CreateCard {
         parent_id: None,
         workspace_id,
@@ -62,7 +74,7 @@ async fn test_card_hierarchy(pool: sqlx::PgPool) -> anyhow::Result<()> {
 
 #[sqlx::test]
 async fn test_get_hierarchy_not_found(pool: sqlx::PgPool) -> anyhow::Result<()> {
-    sqlx::migrate!().run(&pool).await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
     let result = Card::get_hierarchy(&pool, Uuid::new_v4()).await;
     assert!(result.is_err());
     Ok(())
