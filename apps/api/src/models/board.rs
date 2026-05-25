@@ -1,8 +1,8 @@
+use crate::models::card::Card;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
-use crate::models::card::Card;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Column {
@@ -34,7 +34,10 @@ pub struct BoardState {
 
 impl BoardState {
     #[tracing::instrument(skip(pool))]
-    pub async fn get_state(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<Self, crate::AppError> {
+    pub async fn get_state(
+        pool: &sqlx::PgPool,
+        workspace_id: Uuid,
+    ) -> Result<Self, crate::AppError> {
         let columns_fut = sqlx::query_as::<_, Column>(
             "SELECT id, workspace_id, title, position, wip_limit, created_at, updated_at FROM columns WHERE workspace_id = $1 ORDER BY position"
         )

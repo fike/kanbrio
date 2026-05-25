@@ -44,15 +44,12 @@ pub struct MoveCard {
 
 impl Card {
     #[tracing::instrument(skip(pool))]
-    pub async fn move_to(
-        pool: &sqlx::PgPool,
-        data: MoveCard,
-    ) -> Result<Self, crate::AppError> {
+    pub async fn move_to(pool: &sqlx::PgPool, data: MoveCard) -> Result<Self, crate::AppError> {
         let mut tx = pool.begin().await?;
 
         // 1. Get current state with workspace isolation
         let current_card = sqlx::query_as::<_, Card>(
-            "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE"
+            "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE",
         )
         .bind(data.card_id)
         .bind(data.workspace_id)
@@ -64,18 +61,23 @@ impl Card {
         })?;
 
         // 2. Validate target column/swimlane workspace alignment
-        let target_col_ws: (Uuid,) = sqlx::query_as("SELECT workspace_id FROM columns WHERE id = $1")
-            .bind(data.to_column_id)
-            .fetch_one(&mut *tx)
-            .await?;
-        
-        let target_lane_ws: (Uuid,) = sqlx::query_as("SELECT workspace_id FROM swimlanes WHERE id = $1")
-            .bind(data.to_swimlane_id)
-            .fetch_one(&mut *tx)
-            .await?;
+        let target_col_ws: (Uuid,) =
+            sqlx::query_as("SELECT workspace_id FROM columns WHERE id = $1")
+                .bind(data.to_column_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        let target_lane_ws: (Uuid,) =
+            sqlx::query_as("SELECT workspace_id FROM swimlanes WHERE id = $1")
+                .bind(data.to_swimlane_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         if target_col_ws.0 != data.workspace_id || target_lane_ws.0 != data.workspace_id {
-            return Err(anyhow::anyhow!("Target column or swimlane belongs to a different workspace").into());
+            return Err(anyhow::anyhow!(
+                "Target column or swimlane belongs to a different workspace"
+            )
+            .into());
         }
 
         // 3. Perform the move
@@ -85,7 +87,7 @@ impl Card {
             SET current_column_id = $1, current_swimlane_id = $2, updated_at = NOW()
             WHERE id = $3
             RETURNING *
-            "#
+            "#,
         )
         .bind(data.to_column_id)
         .bind(data.to_swimlane_id)
@@ -102,7 +104,7 @@ impl Card {
                 from_swimlane_id, to_swimlane_id
             )
             VALUES ($1, $2, 'move', $3, $4, $5, $6)
-            "#
+            "#,
         )
         .bind(updated_card.id)
         .bind(data.user_id)
