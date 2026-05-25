@@ -89,6 +89,7 @@ bd close <id>         # Complete work
 7. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
+- AI Agents must **NEVER** execute `git merge` to the `main` branch or auto-merge PRs. Only Human Users can merge.
 - Work is NOT complete until `git push` succeeds
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
