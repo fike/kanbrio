@@ -2,6 +2,16 @@ use kanbrio_api::models::board::{BoardState, Column, Swimlane};
 use kanbrio_api::models::card::{Card, CreateCard, MoveCard};
 use uuid::Uuid;
 
+use chrono::{DateTime, Utc};
+
+#[derive(Debug, sqlx::FromRow)]
+struct CardTransition {
+    pub from_column_id: Option<Uuid>,
+    pub to_column_id: Option<Uuid>,
+    pub from_swimlane_id: Option<Uuid>,
+    pub to_swimlane_id: Option<Uuid>,
+}
+
 #[sqlx::test]
 async fn test_board_2d_context(pool: sqlx::PgPool) -> anyhow::Result<()> {
     // 1. Manually run migrations (as established in Issue #1 tests)
@@ -25,8 +35,11 @@ async fn test_board_2d_context(pool: sqlx::PgPool) -> anyhow::Result<()> {
     .await?;
 
     let lane_standard = sqlx::query_as::<_, Swimlane>(
-        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Standard', 0) RETURNING *"
-    ).bind(workspace_id).fetch_one(&pool).await?;
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Standard', 0) RETURNING *",
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
 
     // 3. Create Card in 2D Context
     let card = Card::create(
@@ -64,10 +77,10 @@ async fn test_board_2d_context(pool: sqlx::PgPool) -> anyhow::Result<()> {
     assert_eq!(moved_card.current_column_id, col_doing.id);
 
     // 6. Verify Audit Log (Issue #3 Requirement)
-    let transition = sqlx::query!(
-        "SELECT * FROM card_transitions WHERE card_id = $1 AND transition_type = 'move'",
-        card.id
+    let transition = sqlx::query_as::<_, CardTransition>(
+        "SELECT from_column_id, to_column_id, from_swimlane_id, to_swimlane_id FROM card_transitions WHERE card_id = $1 AND transition_type = 'move'",
     )
+    .bind(card.id)
     .fetch_one(&pool)
     .await?;
 
