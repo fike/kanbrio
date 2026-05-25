@@ -16,6 +16,9 @@ pub enum AppError {
 
     #[error("Not found")]
     NotFound,
+
+    #[error("Forbidden")]
+    Forbidden,
 }
 
 impl IntoResponse for AppError {
@@ -36,6 +39,7 @@ impl IntoResponse for AppError {
                 )
             }
             AppError::NotFound => (StatusCode::NOT_FOUND, "Resource not found".to_string()),
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
         };
 
         let body = Json(json!({

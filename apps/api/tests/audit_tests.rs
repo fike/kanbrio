@@ -59,7 +59,7 @@ async fn test_card_audit_trail(pool: sqlx::PgPool) -> anyhow::Result<()> {
     .await?;
 
     // 4. Verification: Fetch History
-    let history = CardTransition::get_history(&pool, card.id).await?;
+    let history = CardTransition::get_history(&pool, card.id, workspace_id, 50, 0).await?;
 
     // We expect 2 entries: 1 for 'create', 1 for 'move', ordered by recent first
     assert_eq!(history.len(), 2);
