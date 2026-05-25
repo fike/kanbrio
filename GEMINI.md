@@ -11,6 +11,7 @@ This project follows a strict **Agent-First** development model. All development
 - **Issue Tracking:** Use **bd (beads)** for all task management. Never use markdown files or other tools for tracking work.
 - **Workflow Skill:** Strictly follow the pipeline defined in the `agentic-workflow` skill (`.agents/skills/agentic-workflow/SKILL.md`).
 - **TDD:** The `tdd` skill is mandatory for all code implementations by the `@developer`.
+- **Merge Protocol (HARD RULE):** AI Agents must **NEVER** merge Pull Requests to the `main` branch or execute `git merge` into main. Human review and explicit approval are mandatory.
 
 ## 📂 Architecture & Context
 - **ADRs:** Consult `docs/adr/` before making architectural decisions.
