@@ -1,78 +1,36 @@
-import type { Component } from 'solid-js';
-import Card from './components/Card/Card';
+import { type Component } from 'solid-js';
+import Board from './components/Board/Board';
 
 const App: Component = () => {
+  // Static workspace ID for initial testing (corresponds to seeder/test data)
+  const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
+
   return (
-    <div class="min-h-screen bg-base text-primary p-8">
-      <header class="mb-12 text-center">
-        <h1 class="text-4xl font-bold tracking-tight text-accent-primary mb-2">
-          Kanbrio UI Showroom
-        </h1>
-        <p class="text-secondary text-lg">
-          Visual verification of core components
-        </p>
+    <div class="h-screen flex flex-col">
+      <header class="h-14 shrink-0 bg-surface border-b border-base flex items-center justify-between px-6 z-30 shadow-sm">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-accent-primary rounded flex items-center justify-center text-white font-bold text-xs">
+            K
+          </div>
+          <h1 class="text-md font-semibold tracking-tight">Kanbrio</h1>
+        </div>
+        
+        <nav class="flex items-center gap-4 text-xs font-medium text-secondary">
+          <span class="px-2 py-1 bg-elevated rounded border border-base">Board</span>
+          <span class="opacity-40">Analytics</span>
+          <span class="opacity-40">Settings</span>
+        </nav>
+
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-elevated border border-base flex items-center justify-center text-[10px] font-bold text-tertiary">
+            FI
+          </div>
+        </div>
       </header>
       
-      <main class="max-w-4xl mx-auto">
-        <section class="mb-12">
-          <h2 class="text-xl font-semibold mb-6 border-b border-base pb-2">
-            Card Component States
-          </h2>
-          
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Default State */}
-            <div class="space-y-2">
-              <h4 class="text-xs uppercase text-tertiary font-bold">Default</h4>
-              <Card 
-                id="KNB-1" 
-                title="Implement user authentication logic with JWT" 
-                parentTitle="Security Epic"
-                subtasksCount={3}
-                totalSubtasks={5}
-              />
-            </div>
-
-            {/* Blocked State */}
-            <div class="space-y-2">
-              <h4 class="text-xs uppercase text-tertiary font-bold">Blocked</h4>
-              <Card 
-                id="KNB-2" 
-                title="Database migration for the new board schema" 
-                state="blocked"
-                blockerReason="Awaiting SRE approval"
-                parentTitle="Infrastructure"
-              />
-            </div>
-
-            {/* Delayed State */}
-            <div class="space-y-2">
-              <h4 class="text-xs uppercase text-tertiary font-bold">Delayed</h4>
-              <Card 
-                id="KNB-3" 
-                title="Update README documentation with setup guides" 
-                state="delayed"
-                subtasksCount={0}
-                totalSubtasks={2}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section class="mb-12">
-          <h2 class="text-xl font-semibold mb-6 border-b border-base pb-2">
-            Component Specs (DESIGN.md Alignment)
-          </h2>
-          <div class="bg-surface border border-base rounded-lg p-6 space-y-4 text-sm text-secondary">
-            <p>✅ <strong>Motion:</strong> Cards use <code>ease-standard</code> (cubic-bezier) and 300ms duration on hover/state change.</p>
-            <p>✅ <strong>Typography:</strong> Titles use <code>font-medium</code>, IDs use <code>font-mono</code> (JetBrains Mono).</p>
-            <p>✅ <strong>Acessibilidade:</strong> Focus rings and ARIA labels are active.</p>
-          </div>
-        </section>
+      <main class="flex-1 overflow-hidden">
+        <Board workspaceId={TEST_WORKSPACE_ID} />
       </main>
-      
-      <footer class="mt-16 text-center text-tertiary text-xs">
-        Kanbrio Open Source Project • Cycle 2
-      </footer>
     </div>
   );
 };
