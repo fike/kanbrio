@@ -4,6 +4,7 @@ import solid from 'vite-plugin-solid'
 
 export default defineConfig({
   plugins: [solid()],
+  // @ts-ignore
   test: {
     environment: 'jsdom',
     globals: true,
