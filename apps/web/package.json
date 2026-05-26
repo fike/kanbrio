@@ -17,6 +17,7 @@
   "devDependencies": {
     "@solidjs/router": "^0.16.1",
     "@solidjs/testing-library": "^0.8.10",
+    "@tailwindcss/postcss": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@types/node": "^24.12.3",
     "@typescript-eslint/eslint-plugin": "^8.60.0",
