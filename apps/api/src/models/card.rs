@@ -74,27 +74,28 @@ impl Card {
                 .await?;
 
         if target_col_ws.0 != data.workspace_id || target_lane_ws.0 != data.workspace_id {
-            return Err(anyhow::anyhow!("Target column or swimlane belongs to a different workspace").into());
+            return Err(anyhow::anyhow!(
+                "Target column or swimlane belongs to a different workspace"
+            )
+            .into());
         }
 
         // 3. WIP Limit Validation (Issue #4)
         // Security/SRE: Lock the column to prevent race conditions during WIP count
-        let wip_limit: (Option<i32>,) = sqlx::query_as(
-            "SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE"
-        )
-        .bind(data.to_column_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let wip_limit: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+                .bind(data.to_column_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         if let Some(limit) = wip_limit.0 {
             // Only enforce if moving from a different column
             if current_card.current_column_id != data.to_column_id {
-                let current_count: (i64,) = sqlx::query_as(
-                    "SELECT COUNT(*) FROM cards WHERE current_column_id = $1"
-                )
-                .bind(data.to_column_id)
-                .fetch_one(&mut *tx)
-                .await?;
+                let current_count: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1")
+                        .bind(data.to_column_id)
+                        .fetch_one(&mut *tx)
+                        .await?;
 
                 if current_count.0 >= limit as i64 {
                     return Err(crate::AppError::WipLimitExceeded);
@@ -109,7 +110,7 @@ impl Card {
             SET current_column_id = $1, current_swimlane_id = $2, updated_at = NOW()
             WHERE id = $3
             RETURNING *
-            "#
+            "#,
         )
         .bind(data.to_column_id)
         .bind(data.to_swimlane_id)
@@ -165,12 +166,11 @@ impl Card {
 
         // 2. WIP Limit Validation (Issue #4)
         // Lock the column to prevent race conditions
-        let wip_limit: (Option<i32>,) = sqlx::query_as(
-            "SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE",
-        )
-        .bind(data.current_column_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let wip_limit: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+                .bind(data.current_column_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         if let Some(limit) = wip_limit.0 {
             let current_count: (i64,) =
