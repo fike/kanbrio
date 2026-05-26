@@ -42,23 +42,34 @@ All AI coding agents (like @developer) **MUST** strictly adhere to these tokens 
 - **Borders:** `border-base` -> #E5E7EB (Light) / #334155 (Dark).
 
 ## 5. Motion Tokens (Solid.js / CSS)
-- **Duration:** `duration-150` for micro-interactions (hover), `duration-300` for structural changes (card moves).
-- **Easing:** `ease-in-out` for general, `cubic-bezier(0.4, 0, 0.2, 1)` for complex morphs.
+- **Duration:** 
+  - `micro`: `duration-150` (Micro-interactions).
+  - `standard`: `duration-300` (Default movements).
+  - `expressive`: `duration-500` (Main board transitions).
+- **Easing:** 
+  - `ease-standard`: `cubic-bezier(0.2, 0, 0, 1)` (Fluid).
+  - `ease-expressive`: `cubic-bezier(0, 0, 0, 1)` (Material 3 inspired).
 
 ## 6. Accessibility (A11y) Constraints
 - Every interactive element must have `focus:ring-2 focus:ring-accent-primary focus:outline-none`.
 - Icons must have `aria-label` or `title` attributes.
+- **Motion:** Respect `prefers-reduced-motion` media queries.
 
 ## 7. Layout Components (2D Board)
 
 This section defines the structural components for the Kanban experience, emphasizing the "Independent Cards + Tags" hierarchy model.
 
 ### 7.1 Card Anatomy
-- **Structure:** `flex flex-col gap-1 p-3 bg-surface border border-base rounded-md shadow-sm`.
+- **Structure:** `flex flex-col gap-1 p-3 bg-surface border border-base rounded-md shadow-sm transition-all ease-standard duration-300`.
+- **States:**
+  - **Blocked:** `border-status-blocked bg-status-blocked/5 ring-1 ring-status-blocked`.
+  - **Delayed:** `border-status-doing/50 bg-status-doing/5`.
+  - **Dragging:** `opacity-50 scale-105 shadow-xl rotate-1`.
 - **Header:**
   - **Parent Breadcrumb:** If `parent_id` exists, show a text-xs tag at the top-left: `text-secondary hover:text-accent-primary cursor-pointer`. Format: `Initiative / ...`.
 - **Body:**
   - **Title:** `text-sm font-medium text-primary`. Limit to 2 lines (line-clamp).
+  - **Blocker Reason:** If blocked, show `text-xs text-status-blocked font-medium` below the title.
 - **Footer:**
   - **Children/Subtasks Indicator:** If children exist, show an icon + progress: `text-xs text-secondary`. Format: `[Subtasks: 2/5]`.
   - **Metadata:** Show `card-id` (JetBrains Mono) and `assignee-avatar` at the bottom-right.

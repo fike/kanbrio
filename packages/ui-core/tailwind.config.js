@@ -30,11 +30,13 @@ module.exports = {
         mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
       transitionDuration: {
-        '150': '150ms',
-        '300': '300ms',
+        'micro': '150ms',
+        'standard': '300ms',
+        'expressive': '500ms',
       },
       transitionTimingFunction: {
-        'complex': 'cubic-bezier(0.4, 0, 0.2, 1)',
+        'standard': 'cubic-bezier(0.2, 0, 0, 1)',
+        'expressive': 'cubic-bezier(0, 0, 0, 1)',
       }
     },
   },
