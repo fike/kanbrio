@@ -80,7 +80,30 @@ impl Card {
             .into());
         }
 
-        // 3. Perform the move
+        // 3. WIP Limit Validation (Issue #4)
+        // Security/SRE: Lock the column to prevent race conditions during WIP count
+        let wip_limit: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+                .bind(data.to_column_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        if let Some(limit) = wip_limit.0 {
+            // Only enforce if moving from a different column
+            if current_card.current_column_id != data.to_column_id {
+                let current_count: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1")
+                        .bind(data.to_column_id)
+                        .fetch_one(&mut *tx)
+                        .await?;
+
+                if current_count.0 >= limit as i64 {
+                    return Err(crate::AppError::WipLimitExceeded);
+                }
+            }
+        }
+
+        // 4. Perform the move
         let updated_card = sqlx::query_as::<_, Card>(
             r#"
             UPDATE cards 
@@ -95,7 +118,7 @@ impl Card {
         .fetch_one(&mut *tx)
         .await?;
 
-        // 3. Log transition (Issue #3)
+        // 5. Log transition (Issue #3)
         sqlx::query(
             r#"
             INSERT INTO card_transitions (
@@ -138,6 +161,26 @@ impl Card {
 
             if parent_workspace_id.0 != data.workspace_id {
                 return Err(anyhow::anyhow!("Parent card belongs to a different workspace").into());
+            }
+        }
+
+        // 2. WIP Limit Validation (Issue #4)
+        // Lock the column to prevent race conditions
+        let wip_limit: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+                .bind(data.current_column_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        if let Some(limit) = wip_limit.0 {
+            let current_count: (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1")
+                    .bind(data.current_column_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
+            if current_count.0 >= limit as i64 {
+                return Err(crate::AppError::WipLimitExceeded);
             }
         }
 

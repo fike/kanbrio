@@ -19,6 +19,9 @@ pub enum AppError {
 
     #[error("Forbidden")]
     Forbidden,
+
+    #[error("WIP limit exceeded for target column")]
+    WipLimitExceeded,
 }
 
 impl IntoResponse for AppError {
@@ -40,6 +43,7 @@ impl IntoResponse for AppError {
             }
             AppError::NotFound => (StatusCode::NOT_FOUND, "Resource not found".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
+            AppError::WipLimitExceeded => (StatusCode::CONFLICT, "WIP limit exceeded".to_string()),
         };
 
         let body = Json(json!({
