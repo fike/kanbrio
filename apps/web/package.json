@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@kanbrio/ui-core": "*",
+    "lucide-solid": "^1.16.0",
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
