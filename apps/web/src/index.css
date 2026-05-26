@@ -1,0 +1,6 @@
+@import "../../../packages/ui-core/styles/tokens.css";
+
+/* Additional web-specific base styles if needed */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

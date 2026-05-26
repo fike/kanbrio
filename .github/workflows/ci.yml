@@ -62,18 +62,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
-        working-directory: apps/web
-        continue-on-error: true
+        run: npm ci
 
       - name: Lint
-        run: npm run lint
-        working-directory: apps/web
-        continue-on-error: true
+        run: npm run lint -w apps/web
 
       - name: Test
-        run: npm test
-        working-directory: apps/web
-        continue-on-error: true
+        run: npm test -w apps/web
+
+      - name: Build
+        run: npm run build -w apps/web
