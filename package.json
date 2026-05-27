@@ -10,5 +10,8 @@
     "web:build": "npm run build -w apps/web",
     "lint": "npm run lint -w apps/web",
     "test": "npm test -w apps/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
