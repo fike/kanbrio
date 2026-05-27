@@ -39,3 +39,30 @@ export const fetchBoardState = async (workspaceId: string): Promise<BoardState> 
   }
   return response.json();
 };
+
+export const moveCard = async (
+  workspaceId: string,
+  cardId: string,
+  toColumnId: string,
+  toSwimlaneId: string
+): Promise<CardData> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards/${cardId}/move`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      to_column_id: toColumnId,
+      to_swimlane_id: toSwimlaneId,
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 409) {
+      throw new Error('WIP_LIMIT_EXCEEDED');
+    }
+    throw new Error('Failed to move card');
+  }
+
+  return response.json();
+};

@@ -5,6 +5,7 @@ import Card from './Card';
 describe('Card Component', () => {
   const defaultProps = {
     id: 'KNB-101',
+    fullId: '550e8400-e29b-41d4-a716-446655440000',
     title: 'Test Card Title',
   };
 
@@ -27,9 +28,9 @@ describe('Card Component', () => {
     const { container } = render(() => (
       <Card {...defaultProps} state="blocked" blockerReason="Waiting for API" />
     ));
-    
+
     expect(screen.getByText('Waiting for API')).toBeInTheDocument();
-    
+
     const cardElement = container.firstChild as HTMLElement;
     expect(cardElement).toHaveClass('border-status-blocked');
   });
@@ -38,7 +39,7 @@ describe('Card Component', () => {
     const { container } = render(() => (
       <Card {...defaultProps} state="delayed" />
     ));
-    
+
     const cardElement = container.firstChild as HTMLElement;
     expect(cardElement).toHaveClass('border-status-doing/50');
   });

@@ -1,5 +1,5 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
+  - repo: git@github.com:pre-commit/pre-commit-hooks.git
     rev: v4.5.0
     hooks:
       - id: trailing-whitespace
@@ -7,15 +7,15 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
-  - repo: https://github.com/doublereed/pre-commit-rust
-    rev: v1.0.0
+  - repo: git@github.com:doublify/pre-commit-rust.git
+    rev: v1.0
     hooks:
       - id: fmt
         args: ["--manifest-path", "apps/api/Cargo.toml", "--"]
       - id: clippy
         args: ["--manifest-path", "apps/api/Cargo.toml", "--", "-D", "warnings"]
 
-  - repo: https://github.com/Yelp/detect-secrets
+  - repo: git@github.com:Yelp/detect-secrets.git
     rev: v1.4.0
     hooks:
       - id: detect-secrets
