@@ -1,6 +1,6 @@
 # Kanbrio Design System (Machine-Readable Manifest)
 
-This file (`DESIGN.md`) is the single source of truth for the Kanbrio visual identity. 
+This file (`DESIGN.md`) is the single source of truth for the Kanbrio visual identity.
 All AI coding agents (like @developer) **MUST** strictly adhere to these tokens and constraints when generating UI code (Solid.js / Tailwind CSS).
 
 ## 1. Design Philosophy
@@ -25,7 +25,7 @@ All AI coding agents (like @developer) **MUST** strictly adhere to these tokens 
   - `status-blocked`: #EF4444 (Red)
 
 ## 3. Typography
-- **Font Family:** 
+- **Font Family:**
   - `font-sans`: Inter, ui-sans-serif, system-ui, sans-serif
   - `font-mono`: JetBrains Mono, ui-monospace, monospace (For data-heavy IDs and logs)
 - **Hierarchy:**
@@ -36,17 +36,17 @@ All AI coding agents (like @developer) **MUST** strictly adhere to these tokens 
 
 ## 4. Layout & Spacing
 - **Grid System:** 4pt base grid.
-- **Density:** 
+- **Density:**
   - Kanbrio is data-dense. Prefer `p-2` or `p-3` for container paddings, avoiding excessive whitespace.
   - Border Radius: `rounded-md` (4px) or `rounded-lg` (6px). No fully rounded elements except avatars.
 - **Borders:** `border-base` -> #E5E7EB (Light) / #334155 (Dark).
 
 ## 5. Motion Tokens (Solid.js / CSS)
-- **Duration:** 
+- **Duration:**
   - `micro`: `duration-150` (Micro-interactions).
   - `standard`: `duration-300` (Default movements).
   - `expressive`: `duration-500` (Main board transitions).
-- **Easing:** 
+- **Easing:**
   - `ease-standard`: `cubic-bezier(0.2, 0, 0, 1)` (Fluid).
   - `ease-expressive`: `cubic-bezier(0, 0, 0, 1)` (Material 3 inspired).
 
@@ -105,3 +105,16 @@ This section defines the structural components for the Kanban experience, emphas
 - **Location:** Top of the Board view when a specific parent filter is active.
 - **Format:** `Workspace > Parent > Child > ...`
 - **Style:** `text-sm text-secondary`, separator `bg-secondary/20` (chevron icon).
+
+### 7.6 Drag & Drop Engine (Pragmatic D&D)
+- **Library:** `@atlaskit/pragmatic-drag-and-drop`.
+- **States:**
+  - **Dragging (Ghost):** The source element at `opacity-50`.
+  - **Preview (Native):** `scale-105 rotate-2 shadow-2xl transition-transform ease-standard duration-150`.
+  - **Drop Target (Hover):** `bg-accent-primary/5 border border-dashed border-accent-primary/30`.
+- **Insertion Indicator (Line):**
+  - A horizontal/vertical line of `2px` with a `4px` dot at the start.
+  - Color: `bg-accent-primary`.
+- **Optimistic UI:**
+  - Move card instantly on drop.
+  - On Error (e.g., WIP Limit): Revert position with a `shake` animation (duration-300).

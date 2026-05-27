@@ -1,10 +1,12 @@
-import { type Component, Show } from 'solid-js';
+import { type Component, Show, createSignal, onMount } from 'solid-js';
 import { ShieldAlert, Clock, Layers } from 'lucide-solid';
+import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 export type CardState = 'default' | 'blocked' | 'delayed';
 
 export interface CardProps {
   id: string;
+  fullId: string; // The UUID
   title: string;
   state?: CardState;
   blockerReason?: string;
@@ -18,9 +20,21 @@ export interface CardProps {
 const Card: Component<CardProps> = (props) => {
   const isBlocked = () => props.state === 'blocked';
   const isDelayed = () => props.state === 'delayed';
+  const [isDragging, setIsDragging] = createSignal(false);
+  let el!: HTMLDivElement;
+
+  onMount(() => {
+    return draggable({
+      element: el,
+      getInitialData: () => ({ type: 'card', id: props.fullId }),
+      onDragStart: () => setIsDragging(true),
+      onDrop: () => setIsDragging(false),
+    });
+  });
 
   return (
     <div
+      ref={el}
       role="listitem"
       tabIndex={0}
       onClick={() => props.onClick?.()}
@@ -29,12 +43,13 @@ const Card: Component<CardProps> = (props) => {
         'border-base': !props.state || props.state === 'default',
         'border-status-blocked bg-status-blocked/5 ring-1 ring-status-blocked': isBlocked(),
         'border-status-doing/50 bg-status-doing/5': isDelayed(),
+        'opacity-50 scale-105 shadow-xl rotate-1': isDragging(),
       }}
       aria-label={`Card: ${props.title}${isBlocked() ? ', Blocked' : ''}${isDelayed() ? ', Delayed' : ''}`}
     >
       {/* Header: Parent Breadcrumb */}
       <Show when={props.parentTitle}>
-        <div 
+        <div
           class="text-[10px] uppercase font-bold tracking-wider text-secondary hover:text-accent-primary transition-colors mb-0.5"
           title={`Parent: ${props.parentTitle}`}
         >
@@ -69,7 +84,7 @@ const Card: Component<CardProps> = (props) => {
         <div class="flex items-center gap-3">
           {/* Subtasks Indicator */}
           <Show when={props.totalSubtasks && props.totalSubtasks > 0}>
-            <div 
+            <div
               class="flex items-center gap-1 text-[10px] text-secondary font-mono"
               aria-label={`${props.subtasksCount} of ${props.totalSubtasks} subtasks completed`}
             >
@@ -77,7 +92,7 @@ const Card: Component<CardProps> = (props) => {
               <span>{props.subtasksCount}/{props.totalSubtasks}</span>
             </div>
           </Show>
-          
+
           {/* Card ID */}
           <span class="text-[10px] font-mono text-tertiary uppercase">
             {props.id}
@@ -86,9 +101,9 @@ const Card: Component<CardProps> = (props) => {
 
         {/* Assignee Avatar Placeholder */}
         <Show when={props.assigneeAvatar} fallback={<div class="w-5 h-5 rounded-full bg-elevated border border-base" />}>
-          <img 
-            src={props.assigneeAvatar} 
-            alt="Assignee" 
+          <img
+            src={props.assigneeAvatar}
+            alt="Assignee"
             class="w-5 h-5 rounded-full border border-base"
           />
         </Show>
