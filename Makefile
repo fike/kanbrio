@@ -2,6 +2,8 @@
 
 .PHONY: db-up db-down db-migrate db-seed setup dev test help
 
+export DATABASE_URL ?= postgres://postgres:password@localhost:5432/kanbrio # pragma: allowlist secret
+
 # --- Infrastructure ---
 
 db-up: ## Start the PostgreSQL database
