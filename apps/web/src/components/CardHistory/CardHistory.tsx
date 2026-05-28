@@ -1,4 +1,4 @@
-import { type Component, For, Show } from 'solid-js';
+import { type Component, For, Show, Switch, Match } from 'solid-js';
 import { createQuery } from '@tanstack/solid-query';
 import { getCardHistory } from '../../api/board';
 import { formatDistanceToNow } from 'date-fns';
@@ -19,16 +19,17 @@ interface CardHistoryProps {
 }
 
 const EventIcon: Component<{ type: string }> = (props) => {
-  switch (props.type) {
-    case 'create': return <Plus size={14} class="text-status-doing" />;
-    case 'move': return <Move size={14} class="text-accent-primary" />;
-    case 'block': return <ShieldAlert size={14} class="text-status-blocked" />;
-    case 'unblock': return <ShieldCheck size={14} class="text-status-done" />;
-    case 'update': return <Edit size={14} class="text-tertiary" />;
-    case 'archive': return <Archive size={14} class="text-tertiary" />;
-    case 'delete': return <Trash2 size={14} class="text-status-blocked" />;
-    default: return <Circle size={14} class="text-tertiary" />;
-  }
+  return (
+    <Switch fallback={<Circle size={14} class="text-tertiary" />}>
+      <Match when={props.type === 'create'}><Plus size={14} class="text-status-doing" /></Match>
+      <Match when={props.type === 'move'}><Move size={14} class="text-accent-primary" /></Match>
+      <Match when={props.type === 'block'}><ShieldAlert size={14} class="text-status-blocked" /></Match>
+      <Match when={props.type === 'unblock'}><ShieldCheck size={14} class="text-status-done" /></Match>
+      <Match when={props.type === 'update'}><Edit size={14} class="text-tertiary" /></Match>
+      <Match when={props.type === 'archive'}><Archive size={14} class="text-tertiary" /></Match>
+      <Match when={props.type === 'delete'}><Trash2 size={14} class="text-status-blocked" /></Match>
+    </Switch>
+  );
 };
 
 const CardHistory: Component<CardHistoryProps> = (props) => {
@@ -75,8 +76,8 @@ const CardHistory: Component<CardHistoryProps> = (props) => {
                     <Show when={event.transition_type === 'move'}>
                       Moved from column to another.
                     </Show>
-                    <Show when={event.transition_type === 'block' && event.payload?.reason}>
-                      <span class="italic font-medium">Reason:</span> {event.payload.reason}
+                    <Show when={event.transition_type === 'block' && (event.payload as any)?.reason}>
+                      <span class="italic font-medium">Reason:</span> {(event.payload as any).reason}
                     </Show>
                     <Show when={event.transition_type === 'update'}>
                       Updated properties.

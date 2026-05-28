@@ -19,7 +19,7 @@ export interface CardTransition {
   to_column_id: string | null;
   from_swimlane_id: string | null;
   to_swimlane_id: string | null;
-  payload: any;
+  payload: unknown;
   occurred_at: string;
 }
 
