@@ -13,6 +13,7 @@ pub struct CardTransition {
     pub to_column_id: Option<Uuid>,
     pub from_swimlane_id: Option<Uuid>,
     pub to_swimlane_id: Option<Uuid>,
+    pub payload: Option<serde_json::Value>,
     pub occurred_at: DateTime<Utc>,
 }
 
@@ -40,8 +41,8 @@ impl CardTransition {
 
         let history = sqlx::query_as::<_, CardTransition>(
             r#"
-            SELECT * FROM card_transitions 
-            WHERE card_id = $1 
+            SELECT * FROM card_transitions
+            WHERE card_id = $1
             ORDER BY occurred_at DESC
             LIMIT $2 OFFSET $3
             "#,

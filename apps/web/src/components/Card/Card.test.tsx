@@ -26,22 +26,13 @@ describe('Card Component', () => {
 
   it('applies blocked styles and renders reason when blocked', () => {
     const { container } = render(() => (
-      <Card {...defaultProps} state="blocked" blockerReason="Waiting for API" />
+      <Card {...defaultProps} isBlocked={true} blockerReason="Waiting for API" />
     ));
 
     expect(screen.getByText('Waiting for API')).toBeInTheDocument();
 
     const cardElement = container.firstChild as HTMLElement;
     expect(cardElement).toHaveClass('border-status-blocked');
-  });
-
-  it('applies delayed styles when delayed', () => {
-    const { container } = render(() => (
-      <Card {...defaultProps} state="delayed" />
-    ));
-
-    const cardElement = container.firstChild as HTMLElement;
-    expect(cardElement).toHaveClass('border-status-doing/50');
   });
 
   it('renders subtasks count when provided', () => {

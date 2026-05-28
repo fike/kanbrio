@@ -3,7 +3,7 @@ import Board from './components/Board/Board';
 
 const App: Component = () => {
   // Static workspace ID for initial testing (corresponds to seeder/test data)
-  const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
+  const TEST_WORKSPACE_ID = '550e8400-e29b-41d4-a716-446655440000';
 
   return (
     <div class="h-screen flex flex-col">
@@ -14,7 +14,7 @@ const App: Component = () => {
           </div>
           <h1 class="text-md font-semibold tracking-tight">Kanbrio</h1>
         </div>
-        
+
         <nav class="flex items-center gap-4 text-xs font-medium text-secondary">
           <span class="px-2 py-1 bg-elevated rounded border border-base">Board</span>
           <span class="opacity-40">Analytics</span>
@@ -27,7 +27,7 @@ const App: Component = () => {
           </div>
         </div>
       </header>
-      
+
       <main class="flex-1 overflow-hidden">
         <Board workspaceId={TEST_WORKSPACE_ID} />
       </main>

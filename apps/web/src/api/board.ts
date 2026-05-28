@@ -5,8 +5,22 @@ export interface CardData {
   title: string;
   current_column_id: string;
   current_swimlane_id: string;
+  is_blocked: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface CardTransition {
+  id: string;
+  card_id: string;
+  user_id: string | null;
+  transition_type: string;
+  from_column_id: string | null;
+  to_column_id: string | null;
+  from_swimlane_id: string | null;
+  to_swimlane_id: string | null;
+  payload: unknown;
+  occurred_at: string;
 }
 
 export interface ColumnData {
@@ -64,5 +78,51 @@ export const moveCard = async (
     throw new Error('Failed to move card');
   }
 
+  return response.json();
+};
+
+export const blockCard = async (
+  workspaceId: string,
+  cardId: string,
+  reason: string
+): Promise<CardData> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards/${cardId}/block`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to block card');
+  }
+
+  return response.json();
+};
+
+export const unblockCard = async (
+  workspaceId: string,
+  cardId: string
+): Promise<CardData> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards/${cardId}/unblock`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to unblock card');
+  }
+
+  return response.json();
+};
+
+export const getCardHistory = async (
+  workspaceId: string,
+  cardId: string
+): Promise<CardTransition[]> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards/${cardId}/history`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch card history');
+  }
   return response.json();
 };

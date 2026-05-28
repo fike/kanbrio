@@ -10,6 +10,16 @@ async fn test_audit_history_isolation(pool: sqlx::PgPool) -> anyhow::Result<()> 
     let workspace_a = Uuid::new_v4();
     let workspace_b = Uuid::new_v4();
 
+    // Insert workspaces to satisfy FK
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Workspace A')")
+        .bind(workspace_a)
+        .execute(&pool)
+        .await?;
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Workspace B')")
+        .bind(workspace_b)
+        .execute(&pool)
+        .await?;
+
     // Create a column and swimlane in Workspace A
     let col_a: (Uuid,) = sqlx::query_as(
         "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'Col A', 0) RETURNING id",

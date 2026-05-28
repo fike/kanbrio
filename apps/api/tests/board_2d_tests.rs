@@ -19,6 +19,12 @@ async fn test_board_2d_context(pool: sqlx::PgPool) -> anyhow::Result<()> {
 
     let workspace_id = Uuid::new_v4();
 
+    // Insert workspace to satisfy FK
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
     // 2. Create Board Structure
     let col_todo = sqlx::query_as::<_, Column>(
         "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'To Do', 0) RETURNING *",

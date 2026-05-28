@@ -3,7 +3,7 @@ name: ux-designer
 kind: local
 description: >
   AI UI/UX Specialist & Interaction Architect.
-  Responsible for defining the visual language, maintaining DESIGN.md, 
+  Responsible for defining the visual language, maintaining DESIGN.md,
   and ensuring low cognitive load and high accessibility (a11y).
 skills:
   - ooda-loop-agents
