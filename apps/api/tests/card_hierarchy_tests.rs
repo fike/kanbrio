@@ -8,6 +8,12 @@ async fn test_card_hierarchy(pool: sqlx::PgPool) -> anyhow::Result<()> {
 
     let workspace_id = Uuid::new_v4();
 
+    // Insert workspace to satisfy FK
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
     // 2. Create valid board structure to satisfy foreign keys
     let column: (Uuid,) = sqlx::query_as(
         "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'Test Col', 0) RETURNING id"

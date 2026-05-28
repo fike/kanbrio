@@ -14,6 +14,12 @@ async fn test_move_card_api(pool: sqlx::PgPool) -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     let workspace_id = Uuid::new_v4();
 
+    // Insert workspace to satisfy FK
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
     let col_todo: (Uuid,) = sqlx::query_as(
         "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'To Do', 0) RETURNING id",
     )

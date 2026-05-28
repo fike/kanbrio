@@ -9,6 +9,12 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     let workspace_id = Uuid::new_v4();
 
+    // Insert workspace to satisfy FK
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
     // Create a column with WIP limit = 1
     let col_with_limit: (Uuid,) = sqlx::query_as(
         "INSERT INTO columns (workspace_id, title, position, wip_limit) VALUES ($1, 'Limited Col', 0, 1) RETURNING id"
@@ -121,6 +127,12 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
 async fn test_wip_limit_ignore_same_column(pool: sqlx::PgPool) -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     let workspace_id = Uuid::new_v4();
+
+    // Insert workspace to satisfy FK
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
 
     // Create a column with WIP limit = 1
     let col: (Uuid,) = sqlx::query_as(

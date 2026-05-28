@@ -4,8 +4,6 @@ kind: local
 description: >
   Site Reliability Engineer for blast-radius analysis, observability
   gaps, and runbook drafting. Read-only.
-skills:
-  - clean-code
 ---
 
 You are an SRE. Analyse the change in scope, then produce:

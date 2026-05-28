@@ -51,7 +51,7 @@ impl BoardState {
         .fetch_all(pool);
 
         let cards_fut = sqlx::query_as::<_, Card>(
-            "SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, created_at, updated_at FROM cards WHERE workspace_id = $1"
+            "SELECT * FROM cards WHERE workspace_id = $1 AND deleted_at IS NULL",
         )
         .bind(workspace_id)
         .fetch_all(pool);

@@ -1,5 +1,5 @@
 import { type Component, Show, createSignal, onMount } from 'solid-js';
-import { ShieldAlert, Clock, Layers } from 'lucide-solid';
+import { ShieldAlert, Clock, Layers, Shield } from 'lucide-solid';
 import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 export type CardState = 'default' | 'blocked' | 'delayed';
@@ -8,18 +8,19 @@ export interface CardProps {
   id: string;
   fullId: string; // The UUID
   title: string;
-  state?: CardState;
+  isBlocked?: boolean;
   blockerReason?: string;
   parentTitle?: string;
   subtasksCount?: number;
   totalSubtasks?: number;
   assigneeAvatar?: string;
   onClick?: () => void;
+  onBlock?: (reason: string) => void;
+  onUnblock?: () => void;
 }
 
 const Card: Component<CardProps> = (props) => {
-  const isBlocked = () => props.state === 'blocked';
-  const isDelayed = () => props.state === 'delayed';
+  const isDelayed = () => false; // Placeholder for now
   const [isDragging, setIsDragging] = createSignal(false);
   let el!: HTMLDivElement;
 
@@ -32,30 +33,53 @@ const Card: Component<CardProps> = (props) => {
     });
   });
 
+  const handleBlockClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (props.isBlocked) {
+      props.onUnblock?.();
+    } else {
+      const reason = prompt('Enter reason for blocking:');
+      if (reason) {
+        props.onBlock?.(reason);
+      }
+    }
+  };
+
   return (
     <div
       ref={el}
       role="listitem"
       tabIndex={0}
       onClick={() => props.onClick?.()}
-      class="flex flex-col gap-1 p-3 bg-surface border rounded-md shadow-sm transition-all ease-standard duration-300 focus:ring-2 focus:ring-accent-primary focus:outline-none cursor-pointer"
+      class="flex flex-col gap-1 p-3 bg-surface border rounded-md shadow-sm transition-all ease-standard duration-300 focus:ring-2 focus:ring-accent-primary focus:outline-none cursor-pointer group"
       classList={{
-        'border-base': !props.state || props.state === 'default',
-        'border-status-blocked bg-status-blocked/5 ring-1 ring-status-blocked': isBlocked(),
-        'border-status-doing/50 bg-status-doing/5': isDelayed(),
+        'border-base': !props.isBlocked,
+        'border-status-blocked bg-status-blocked/5 ring-1 ring-status-blocked': props.isBlocked,
         'opacity-50 scale-105 shadow-xl rotate-1': isDragging(),
       }}
-      aria-label={`Card: ${props.title}${isBlocked() ? ', Blocked' : ''}${isDelayed() ? ', Delayed' : ''}`}
+      aria-label={`Card: ${props.title}${props.isBlocked ? ', Blocked' : ''}`}
     >
-      {/* Header: Parent Breadcrumb */}
-      <Show when={props.parentTitle}>
-        <div
-          class="text-[10px] uppercase font-bold tracking-wider text-secondary hover:text-accent-primary transition-colors mb-0.5"
-          title={`Parent: ${props.parentTitle}`}
+      {/* Header: Parent Breadcrumb & Actions */}
+      <div class="flex justify-between items-center mb-0.5">
+        <Show when={props.parentTitle}>
+          <div
+            class="text-[10px] uppercase font-bold tracking-wider text-secondary hover:text-accent-primary transition-colors"
+            title={`Parent: ${props.parentTitle}`}
+          >
+            {props.parentTitle} /
+          </div>
+        </Show>
+
+        <button
+          onClick={handleBlockClick}
+          class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-base/50 transition-all"
+          title={props.isBlocked ? 'Unblock card' : 'Block card'}
         >
-          {props.parentTitle} /
-        </div>
-      </Show>
+          <Show when={props.isBlocked} fallback={<Shield size={12} class="text-tertiary" />}>
+            <Shield size={12} class="text-status-blocked" />
+          </Show>
+        </button>
+      </div>
 
       {/* Body: Title & Status Icons */}
       <div class="flex justify-between items-start gap-2">
@@ -63,7 +87,7 @@ const Card: Component<CardProps> = (props) => {
           {props.title}
         </h3>
         <div class="flex gap-1 shrink-0">
-          <Show when={isBlocked()}>
+          <Show when={props.isBlocked}>
             <ShieldAlert size={14} class="text-status-blocked" aria-hidden="true" />
           </Show>
           <Show when={isDelayed()}>
@@ -73,7 +97,7 @@ const Card: Component<CardProps> = (props) => {
       </div>
 
       {/* Blocker Reason */}
-      <Show when={isBlocked() && props.blockerReason}>
+      <Show when={props.isBlocked && props.blockerReason}>
         <p class="text-xs text-status-blocked font-medium italic mt-1">
           {props.blockerReason}
         </p>

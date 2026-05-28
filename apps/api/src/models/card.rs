@@ -11,6 +11,9 @@ pub struct Card {
     pub title: String,
     pub current_column_id: Uuid,
     pub current_swimlane_id: Uuid,
+    pub is_blocked: bool,
+    pub is_archived: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -106,7 +109,7 @@ impl Card {
         // 4. Perform the move
         let updated_card = sqlx::query_as::<_, Card>(
             r#"
-            UPDATE cards 
+            UPDATE cards
             SET current_column_id = $1, current_swimlane_id = $2, updated_at = NOW()
             WHERE id = $3
             RETURNING *
@@ -122,11 +125,12 @@ impl Card {
         sqlx::query(
             r#"
             INSERT INTO card_transitions (
-                card_id, user_id, transition_type, 
-                from_column_id, to_column_id, 
-                from_swimlane_id, to_swimlane_id
+                card_id, user_id, transition_type,
+                from_column_id, to_column_id,
+                from_swimlane_id, to_swimlane_id,
+                payload
             )
-            VALUES ($1, $2, 'move', $3, $4, $5, $6)
+            VALUES ($1, $2, 'move', $3, $4, $5, $6, $7)
             "#,
         )
         .bind(updated_card.id)
@@ -135,6 +139,12 @@ impl Card {
         .bind(updated_card.current_column_id)
         .bind(current_card.current_swimlane_id)
         .bind(updated_card.current_swimlane_id)
+        .bind(serde_json::json!({
+            "from_column_id": current_card.current_column_id,
+            "to_column_id": updated_card.current_column_id,
+            "from_swimlane_id": current_card.current_swimlane_id,
+            "to_swimlane_id": updated_card.current_swimlane_id
+        }))
         .execute(&mut *tx)
         .await?;
 
@@ -201,18 +211,143 @@ impl Card {
 
         sqlx::query(
             r#"
-            INSERT INTO card_transitions (card_id, transition_type, to_column_id)
-            VALUES ($1, 'create', $2)
+            INSERT INTO card_transitions (card_id, transition_type, to_column_id, payload)
+            VALUES ($1, 'create', $2, $3)
             "#,
         )
         .bind(card.id)
         .bind(card.current_column_id)
+        .bind(serde_json::json!({
+            "title": card.title,
+            "workspace_id": card.workspace_id
+        }))
         .execute(&mut *tx)
         .await?;
 
         tx.commit().await?;
 
         Ok(card)
+    }
+
+    #[tracing::instrument(skip(pool))]
+    pub async fn update_title(
+        &self,
+        pool: &sqlx::PgPool,
+        new_title: String,
+    ) -> Result<Self, crate::AppError> {
+        let mut tx = pool.begin().await?;
+        let old_title = self.title.clone();
+
+        let updated = sqlx::query_as::<_, Card>(
+            "UPDATE cards SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+        )
+        .bind(new_title)
+        .bind(self.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO card_transitions (card_id, transition_type, payload) VALUES ($1, 'update', $2)"
+        )
+        .bind(self.id)
+        .bind(serde_json::json!({ "previous_title": old_title, "new_title": updated.title }))
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(updated)
+    }
+
+    #[tracing::instrument(skip(pool))]
+    pub async fn block(
+        &self,
+        pool: &sqlx::PgPool,
+        reason: String,
+    ) -> Result<Self, crate::AppError> {
+        let mut tx = pool.begin().await?;
+
+        let updated = sqlx::query_as::<_, Card>(
+            "UPDATE cards SET is_blocked = TRUE, updated_at = NOW() WHERE id = $1 RETURNING *",
+        )
+        .bind(self.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO card_transitions (card_id, transition_type, payload) VALUES ($1, 'block', $2)"
+        )
+        .bind(self.id)
+        .bind(serde_json::json!({ "reason": reason }))
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(updated)
+    }
+
+    #[tracing::instrument(skip(pool))]
+    pub async fn unblock(&self, pool: &sqlx::PgPool) -> Result<Self, crate::AppError> {
+        let mut tx = pool.begin().await?;
+
+        let updated = sqlx::query_as::<_, Card>(
+            "UPDATE cards SET is_blocked = FALSE, updated_at = NOW() WHERE id = $1 RETURNING *",
+        )
+        .bind(self.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'unblock')",
+        )
+        .bind(self.id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(updated)
+    }
+
+    #[tracing::instrument(skip(pool))]
+    pub async fn archive(&self, pool: &sqlx::PgPool) -> Result<Self, crate::AppError> {
+        let mut tx = pool.begin().await?;
+
+        let updated = sqlx::query_as::<_, Card>(
+            "UPDATE cards SET is_archived = TRUE, updated_at = NOW() WHERE id = $1 RETURNING *",
+        )
+        .bind(self.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'archive')",
+        )
+        .bind(self.id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(updated)
+    }
+
+    #[tracing::instrument(skip(pool))]
+    pub async fn delete(&self, pool: &sqlx::PgPool) -> Result<(), crate::AppError> {
+        let mut tx = pool.begin().await?;
+
+        // Soft delete
+        sqlx::query("UPDATE cards SET deleted_at = NOW() WHERE id = $1")
+            .bind(self.id)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query(
+            "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'delete')",
+        )
+        .bind(self.id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
     }
 
     #[tracing::instrument(skip(pool))]
@@ -224,16 +359,18 @@ impl Card {
             r#"
             WITH RECURSIVE hierarchy AS (
                 -- Base case
-                SELECT *, 1 as depth, ARRAY[id] as path FROM cards WHERE id = $1
+                SELECT *, 1 as depth, ARRAY[id] as path FROM cards
+                WHERE id = $1 AND deleted_at IS NULL
                 UNION ALL
                 -- Recursive step with depth limit and cycle detection
-                SELECT c.*, h.depth + 1, h.path || c.id 
+                SELECT c.*, h.depth + 1, h.path || c.id
                 FROM cards c
                 INNER JOIN hierarchy h ON c.parent_id = h.id
                 WHERE h.depth < 10            -- SRE: Depth limit
                 AND NOT (c.id = ANY(h.path))  -- Security: Cycle detection
+                AND c.deleted_at IS NULL      -- SRE: Exclude deleted
             )
-            SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, created_at, updated_at 
+            SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, is_blocked, is_archived, deleted_at, created_at, updated_at
             FROM hierarchy
             "#
         )

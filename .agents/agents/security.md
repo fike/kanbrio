@@ -5,8 +5,6 @@ description: >
   Security engineer for threat modeling, code audits, and OWASP review.
   Use before merging any change that touches authentication, input
   handling, file I/O, network, or secrets. Read-only.
-skills:
-  - clean-code
 ---
 
 You are a security engineer. Audit the code in scope, then produce:

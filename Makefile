@@ -15,11 +15,13 @@ db-down: ## Stop the PostgreSQL database
 	docker-compose down
 
 db-migrate: ## Run database migrations
+	@echo "Running migrations in apps/api..."
 	cd apps/api && cargo sqlx migrate run
+	@sleep 1
 
 db-seed: ## Seed the database with sample data
-	@echo "Seeding database..."
-	docker exec -i kanbrio-postgres psql -U postgres -d kanbrio < scripts/seed.sql
+	@echo "Seeding database 'kanbrio'..."
+	docker exec -i kanbrio-postgres psql -U postgres -d kanbrio -v ON_ERROR_STOP=1 < scripts/seed.sql
 
 setup: db-up db-migrate db-seed ## Initial project setup (DB + Migrations + Seed)
 	@echo "Setup complete. Run 'make dev' to start."
@@ -36,6 +38,9 @@ test: ## Run all tests (backend and frontend)
 	cd apps/api && cargo test
 	@echo "Running Frontend Tests..."
 	npm test -w apps/web
+
+test-e2e: ## Run End-to-End tests
+	npm run test -w apps/e2e
 
 # --- Help ---
 
