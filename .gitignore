@@ -43,3 +43,7 @@ Thumbs.db
 .dolt/
 *.db
 .beads-credential-key
+
+# Temporary outputs and logs
+*.txt
+*.log
