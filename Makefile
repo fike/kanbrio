@@ -28,6 +28,16 @@ setup: db-up db-migrate db-seed ## Initial project setup (DB + Migrations + Seed
 
 # --- Development ---
 
+check: ## Run all local quality gates (lint, tsc, clippy, fmt)
+	@echo "Checking frontend types..."
+	cd apps/web && npx tsc --noEmit
+	@echo "Linting frontend..."
+	npm run lint -w apps/web
+	@echo "Checking backend formatting..."
+	cd apps/api && cargo fmt --check
+	@echo "Running backend clippy..."
+	cd apps/api && cargo clippy -- -D warnings
+
 dev: ## Start backend and frontend concurrently
 	npx concurrently -n "api,web" -c "cyan,magenta" \
 		"cd apps/api && cargo run" \

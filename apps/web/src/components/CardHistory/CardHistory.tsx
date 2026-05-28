@@ -60,7 +60,7 @@ const CardHistory: Component<CardHistoryProps> = (props) => {
         <div class="relative border-l border-base ml-2 pl-6 flex flex-col gap-6">
           <For each={query.data}>
             {(event) => (
-              <div class="relative">
+              <div class="relative" data-testid={`history-event-${event.transition_type}`}>
                 {/* Timeline Dot */}
                 <div class="absolute -left-[31px] top-0 w-2.5 h-2.5 rounded-full bg-surface border-2 border-base" />
 

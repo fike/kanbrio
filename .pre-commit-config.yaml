@@ -7,6 +7,15 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
+  - repo: local
+    hooks:
+      - id: frontend-check
+        name: Frontend Quality Gate
+        entry: bash -c "cd apps/web && npx tsc --noEmit && npm run lint"
+        language: system
+        files: ^apps/web/
+        pass_filenames: false
+
   - repo: git@github.com:doublify/pre-commit-rust.git
     rev: v1.0
     hooks:

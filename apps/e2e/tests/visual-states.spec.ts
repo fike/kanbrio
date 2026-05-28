@@ -34,8 +34,8 @@ test.describe('Card Lifecycle E2E', () => {
     const sidebar = page.locator('div:has-text("Card History")').last();
     await expect(sidebar).toBeVisible();
 
-    // Verify BLOCK event in history (might need a moment to fetch if not instant)
-    await expect(sidebar.getByText('BLOCK', { exact: false }).first()).toBeVisible();
+    // Verify BLOCK event in history
+    await expect(sidebar.getByTestId('history-event-block').first()).toBeVisible();
     await expect(sidebar.getByText('Reason: E2E Block Reason')).toBeVisible();
 
     // 3. Unblock the card
@@ -46,6 +46,6 @@ test.describe('Card Lifecycle E2E', () => {
     await expect(card).toHaveAttribute('aria-label', `Card: ${CARD_TITLE}`);
 
     // Verify UNBLOCK event in history
-    await expect(sidebar.getByText('UNBLOCK', { exact: false }).first()).toBeVisible();
+    await expect(sidebar.getByTestId('history-event-unblock').first()).toBeVisible();
   });
 });

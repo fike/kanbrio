@@ -19,21 +19,18 @@ test.describe('Transition Auditing E2E', () => {
     // 3. Perform Drag and Drop
     await card.dragTo(targetZone);
 
-    // 4. Wait for potential backend sync (though dragTo is synchronous in Playwright,
-    // the backend request might take a few ms)
-    await page.waitForTimeout(500);
+    // 4. Verify Audit Trail via API using polling to avoid race conditions
+    await expect.poll(async () => {
+      const response = await request.get(`${API_BASE}/api/workspaces/${WORKSPACE_ID}/cards/${CARD_ID}/history`);
+      if (!response.ok()) return null;
+      const history = await response.json();
+      return history[0]?.transition_type;
+    }).toBe('move');
 
-    // 5. Verify Audit Trail via API
-    const response = await request.get(`${API_BASE}/api/workspaces/${WORKSPACE_ID}/cards/${CARD_ID}/history`);
-    expect(response.ok()).toBeTruthy();
-
-    const history = await response.json();
-
-    // The history is ordered by occurred_at DESC, so the move should be the first entry
-    expect(history.length).toBeGreaterThan(0);
+    const finalResponse = await request.get(`${API_BASE}/api/workspaces/${WORKSPACE_ID}/cards/${CARD_ID}/history`);
+    const history = await finalResponse.json();
     const latestEvent = history[0];
 
-    expect(latestEvent.transition_type).toBe('move');
     expect(latestEvent.card_id).toBe(CARD_ID);
 
     // Verify payload (JSONB)
