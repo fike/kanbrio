@@ -112,7 +112,7 @@ const Board: Component<BoardProps> = (props) => {
 
       return { previousState };
     },
-    onError: (err, _newData, context) => {
+    onError: (_err, _newData, context) => {
       queryClient.setQueryData(['board', props.workspaceId], context?.previousState);
     },
     onSettled: () => {
@@ -142,7 +142,7 @@ const Board: Component<BoardProps> = (props) => {
 
       return { previousState };
     },
-    onError: (err, _newData, context) => {
+    onError: (_err, _newData, context) => {
       queryClient.setQueryData(['board', props.workspaceId], context?.previousState);
     },
     onSettled: () => {
