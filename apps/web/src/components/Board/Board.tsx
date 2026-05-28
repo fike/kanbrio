@@ -180,18 +180,44 @@ const Board: Component<BoardProps> = (props) => {
           <div class="w-12 shrink-0 border-r border-base" />
 
           <For each={sortedColumns()}>
-            {(column) => (
-              <div class="w-[300px] p-3 flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-primary truncate">
-                  {column.title}
-                </h3>
-                <Show when={column.wip_limit}>
-                  <span class="text-[10px] px-1.5 py-0.5 bg-elevated rounded border border-base text-tertiary">
-                    WIP: {column.wip_limit}
-                  </span>
-                </Show>
-              </div>
-            )}
+            {(column) => {
+              const columnCardsCount = () => query.data?.cards.filter(c => c.current_column_id === column.id).length || 0;
+              const isAtLimit = () => column.wip_limit !== null && columnCardsCount() === column.wip_limit;
+              const isExceeded = () => column.wip_limit !== null && columnCardsCount() > column.wip_limit;
+
+              return (
+                <div
+                  class="w-[300px] p-3 flex items-center justify-between transition-colors duration-200 border-r border-base/50 last:border-r-0"
+                  classList={{
+                    'bg-orange-50': isAtLimit(),
+                    'bg-red-50': isExceeded(),
+                  }}
+                >
+                  <h3
+                    class="text-sm font-semibold truncate"
+                    classList={{
+                      'text-primary': !isAtLimit() && !isExceeded(),
+                      'text-orange-500': isAtLimit(),
+                      'text-red-500': isExceeded(),
+                    }}
+                  >
+                    {column.title}
+                  </h3>
+                  <Show when={column.wip_limit !== null}>
+                    <span
+                      class="text-[10px] px-1.5 py-0.5 rounded border"
+                      classList={{
+                        'bg-elevated border-base text-tertiary': !isAtLimit() && !isExceeded(),
+                        'bg-orange-100 border-orange-200 text-orange-600': isAtLimit(),
+                        'bg-red-100 border-red-200 text-red-600': isExceeded(),
+                      }}
+                    >
+                      WIP {columnCardsCount()} / {column.wip_limit}
+                    </span>
+                  </Show>
+                </div>
+              );
+            }}
           </For>
         </div>
 
@@ -252,7 +278,7 @@ const Board: Component<BoardProps> = (props) => {
 
       {/* Card History Sidebar */}
       <Show when={selectedCardId()}>
-        <div class="fixed inset-y-0 right-0 w-96 bg-surface shadow-2xl border-l border-base z-50 flex flex-col animate-in slide-in-from-right duration-300">
+        <div data-testid="card-history-sidebar" class="fixed inset-y-0 right-0 w-96 bg-surface shadow-2xl border-l border-base z-50 flex flex-col animate-in slide-in-from-right duration-300">
           <div class="flex justify-between items-center p-4 border-b border-base bg-elevated/20">
             <h2 class="text-sm font-bold uppercase tracking-widest text-primary">Card History</h2>
             <button

@@ -95,13 +95,42 @@ impl Card {
             // Only enforce if moving from a different column
             if current_card.current_column_id != data.to_column_id {
                 let current_count: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1")
+                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND id != $2")
                         .bind(data.to_column_id)
+                        .bind(data.card_id)
                         .fetch_one(&mut *tx)
                         .await?;
 
                 if current_count.0 >= limit as i64 {
-                    return Err(crate::AppError::WipLimitExceeded);
+                    return Err(crate::AppError::WipLimitExceeded {
+                        entity: "column".to_string(),
+                        limit,
+                    });
+                }
+            }
+        }
+
+        let swimlane_wip_limit: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
+                .bind(data.to_swimlane_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        if let Some(limit) = swimlane_wip_limit.0 {
+            // Only enforce if moving from a different swimlane
+            if current_card.current_swimlane_id != data.to_swimlane_id {
+                let current_count: (i64,) =
+                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND id != $2")
+                        .bind(data.to_swimlane_id)
+                        .bind(data.card_id)
+                        .fetch_one(&mut *tx)
+                        .await?;
+
+                if current_count.0 >= limit as i64 {
+                    return Err(crate::AppError::WipLimitExceeded {
+                        entity: "swimlane".to_string(),
+                        limit,
+                    });
                 }
             }
         }
@@ -183,14 +212,40 @@ impl Card {
                 .await?;
 
         if let Some(limit) = wip_limit.0 {
-            let current_count: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1")
-                    .bind(data.current_column_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
+            let current_count: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false",
+            )
+            .bind(data.current_column_id)
+            .fetch_one(&mut *tx)
+            .await?;
 
             if current_count.0 >= limit as i64 {
-                return Err(crate::AppError::WipLimitExceeded);
+                return Err(crate::AppError::WipLimitExceeded {
+                    entity: "column".to_string(),
+                    limit,
+                });
+            }
+        }
+
+        let swimlane_wip_limit: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
+                .bind(data.current_swimlane_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        if let Some(limit) = swimlane_wip_limit.0 {
+            let current_count: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false",
+            )
+            .bind(data.current_swimlane_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            if current_count.0 >= limit as i64 {
+                return Err(crate::AppError::WipLimitExceeded {
+                    entity: "swimlane".to_string(),
+                    limit,
+                });
             }
         }
 

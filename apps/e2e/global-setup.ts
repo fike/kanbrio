@@ -10,6 +10,8 @@ async function globalSetup() {
   try {
     // Navigate to project root and run make setup
     const rootDir = path.resolve(__dirname, '../../');
+    // Ensure the DB is clean by truncating tables first
+    execSync('docker exec kanbrio-postgres psql -U postgres -d kanbrio -c "TRUNCATE cards, columns, swimlanes, workspaces, card_transitions CASCADE;" || true', { cwd: rootDir, stdio: 'inherit' });
     execSync('make setup', { cwd: rootDir, stdio: 'inherit' });
     console.log('--- Database reset complete ---\n');
   } catch (error) {

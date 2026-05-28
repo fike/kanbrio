@@ -36,6 +36,7 @@ export interface SwimlaneData {
   workspace_id: string;
   title: string;
   position: number;
+  wip_limit: number | null;
 }
 
 export interface BoardState {

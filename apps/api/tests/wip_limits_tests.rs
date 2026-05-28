@@ -74,7 +74,10 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
     .await;
 
     // Verify it failed with WipLimitExceeded
-    assert!(matches!(move_result, Err(AppError::WipLimitExceeded)));
+    assert!(matches!(
+        move_result,
+        Err(AppError::WipLimitExceeded { .. })
+    ));
 
     // 4. Action: Move Card 1 OUT of the limited column
     Card::move_to(
@@ -118,7 +121,10 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
     )
     .await;
 
-    assert!(matches!(create_result, Err(AppError::WipLimitExceeded)));
+    assert!(matches!(
+        create_result,
+        Err(AppError::WipLimitExceeded { .. })
+    ));
 
     Ok(())
 }
