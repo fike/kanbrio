@@ -1,3 +1,0 @@
-ESLint output (JSON parse failed: EOF while parsing a value at line 1 column 0)
-
-[full output: ~/Library/Application Support/rtk/tee/1779935717_lint.log]
