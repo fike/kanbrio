@@ -32,6 +32,10 @@ const EventIcon: Component<{ type: string }> = (props) => {
   );
 };
 
+interface BlockPayload {
+  reason?: string;
+}
+
 const CardHistory: Component<CardHistoryProps> = (props) => {
   const query = createQuery(() => ({
     queryKey: ['card-history', props.cardId],
@@ -76,8 +80,8 @@ const CardHistory: Component<CardHistoryProps> = (props) => {
                     <Show when={event.transition_type === 'move'}>
                       Moved from column to another.
                     </Show>
-                    <Show when={event.transition_type === 'block' && (event.payload as any)?.reason}>
-                      <span class="italic font-medium">Reason:</span> {(event.payload as any).reason}
+                    <Show when={event.transition_type === 'block' && (event.payload as BlockPayload)?.reason}>
+                      <span class="italic font-medium">Reason:</span> {(event.payload as BlockPayload).reason}
                     </Show>
                     <Show when={event.transition_type === 'update'}>
                       Updated properties.
