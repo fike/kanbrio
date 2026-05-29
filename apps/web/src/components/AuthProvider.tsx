@@ -1,6 +1,8 @@
-import { createContext, useContext, createSignal, onMount, JSX, Show } from 'solid-js';
+import { createContext, useContext, createSignal, onMount, Show } from 'solid-js';
+import type { JSX } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { getMe, getWorkspaces, logout as apiLogout, User, Workspace } from '../api/auth';
+import { getMe, getWorkspaces, logout as apiLogout } from '../api/auth';
+import type { User, Workspace } from '../api/auth';
 
 export interface AuthContextType {
   currentUser: () => User | null;

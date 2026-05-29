@@ -50,7 +50,7 @@ export function WorkspaceLayout() {
 
           {/* Board content */}
           <main class="flex-1 overflow-hidden">
-            <Board workspaceId={params.workspace_id} />
+            <Board workspaceId={params.workspace_id || ''} />
           </main>
         </div>
       </div>
@@ -97,7 +97,7 @@ export function IntelligentRedirect() {
   );
 }
 
-import { JSX } from 'solid-js';
+import type { JSX } from 'solid-js';
 
 const App: Component<{ children?: JSX.Element }> = (props) => {
   return (
