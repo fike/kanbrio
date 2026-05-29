@@ -187,3 +187,213 @@ async fn test_wip_limit_ignore_same_column(pool: sqlx::PgPool) -> anyhow::Result
 
     Ok(())
 }
+
+#[sqlx::test]
+async fn test_swimlane_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations").run(&pool).await?;
+    let workspace_id = Uuid::new_v4();
+
+    // Insert workspace to satisfy FK
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
+    let col: (Uuid,) = sqlx::query_as(
+        "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'Col', 0) RETURNING id",
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    let lane_with_limit: (Uuid,) = sqlx::query_as(
+        "INSERT INTO swimlanes (workspace_id, title, position, wip_limit) VALUES ($1, 'Limited Lane', 0, 1) RETURNING id",
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    let lane_unlimited: (Uuid,) = sqlx::query_as(
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Unlimited Lane', 1) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let col_id = col.0;
+    let lane_limit_id = lane_with_limit.0;
+    let lane_unlimit_id = lane_unlimited.0;
+
+    // 1. Create first card in limited swimlane (Success)
+    let card1 = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 1".to_string(),
+            current_column_id: col_id,
+            current_swimlane_id: lane_limit_id,
+        },
+    )
+    .await?;
+
+    // 2. Create second card in unlimited swimlane (Success)
+    let card2 = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 2".to_string(),
+            current_column_id: col_id,
+            current_swimlane_id: lane_unlimit_id,
+        },
+    )
+    .await?;
+
+    // 3. Attempt to move card2 to limited swimlane (Failure)
+    let move_result = Card::move_to(
+        &pool,
+        MoveCard {
+            card_id: card2.id,
+            workspace_id,
+            to_column_id: col_id,
+            to_swimlane_id: lane_limit_id,
+            user_id: None,
+        },
+    )
+    .await;
+
+    assert!(matches!(
+        move_result,
+        Err(AppError::WipLimitExceeded { ref entity, limit }) if entity == "swimlane" && limit == 1
+    ));
+
+    // 4. Move Card 1 OUT of the limited swimlane
+    Card::move_to(
+        &pool,
+        MoveCard {
+            card_id: card1.id,
+            workspace_id,
+            to_column_id: col_id,
+            to_swimlane_id: lane_unlimit_id,
+            user_id: None,
+        },
+    )
+    .await?;
+
+    // 5. Now Card 2 should be able to move in (Success)
+    let move_result_success = Card::move_to(
+        &pool,
+        MoveCard {
+            card_id: card2.id,
+            workspace_id,
+            to_column_id: col_id,
+            to_swimlane_id: lane_limit_id,
+            user_id: None,
+        },
+    )
+    .await;
+
+    assert!(move_result_success.is_ok());
+    assert_eq!(
+        move_result_success.unwrap().current_swimlane_id,
+        lane_limit_id
+    );
+
+    // 6. Attempt to CREATE another card directly in the limited swimlane (Failure)
+    let create_result = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 3".to_string(),
+            current_column_id: col_id,
+            current_swimlane_id: lane_limit_id,
+        },
+    )
+    .await;
+
+    assert!(matches!(
+        create_result,
+        Err(AppError::WipLimitExceeded { ref entity, limit }) if entity == "swimlane" && limit == 1
+    ));
+
+    Ok(())
+}
+
+#[sqlx::test]
+async fn test_soft_deleted_cards_ignored_by_wip_limit(pool: sqlx::PgPool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations").run(&pool).await?;
+    let workspace_id = Uuid::new_v4();
+
+    // Insert workspace
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
+    let col: (Uuid,) = sqlx::query_as(
+        "INSERT INTO columns (workspace_id, title, position, wip_limit) VALUES ($1, 'Limited Col', 0, 1) RETURNING id",
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    let lane: (Uuid,) = sqlx::query_as(
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Lane', 0) RETURNING id",
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    let col_id = col.0;
+    let lane_id = lane.0;
+
+    // 1. Create first card in limited column (Success)
+    let card1 = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 1".to_string(),
+            current_column_id: col_id,
+            current_swimlane_id: lane_id,
+        },
+    )
+    .await?;
+
+    // 2. Attempt to create second card in limited column (Failure - Limit Exceeded)
+    let create_result = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 2".to_string(),
+            current_column_id: col_id,
+            current_swimlane_id: lane_id,
+        },
+    )
+    .await;
+
+    assert!(matches!(
+        create_result,
+        Err(AppError::WipLimitExceeded { ref entity, limit }) if entity == "column" && limit == 1
+    ));
+
+    // 3. Soft-delete Card 1
+    card1.delete(&pool).await?;
+
+    // 4. Attempt to create second card again (Success - because Card 1 is soft-deleted)
+    let create_result_success = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 2".to_string(),
+            current_column_id: col_id,
+            current_swimlane_id: lane_id,
+        },
+    )
+    .await;
+
+    assert!(create_result_success.is_ok());
+
+    Ok(())
+}

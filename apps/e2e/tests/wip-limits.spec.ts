@@ -31,23 +31,19 @@ test.describe('WIP Limits E2E', () => {
     // Wait, the plan said "window.alert" for now. Playwright auto-dismisses alerts, but we can catch it!
   });
 
-  test('should handle window.alert on WIP limit exceeded', async ({ page }) => {
+  test('should show Toast notification on WIP limit exceeded', async ({ page }) => {
     await page.goto('/');
 
     const cardToMove = page.locator('div[role="listitem"]').filter({ hasText: CARD_TITLE_TO_MOVE });
     const targetZone = page.getByTestId(DONE_COLUMN_ID).first();
-
-    let alertMessage = '';
-    page.once('dialog', dialog => {
-      alertMessage = dialog.message();
-      dialog.accept();
-    });
 
     await Promise.all([
       page.waitForResponse(r => r.url().includes('/move')),
       cardToMove.dragTo(targetZone)
     ]);
 
-    await expect.poll(() => alertMessage).toBe('WIP Limit Exceeded for this column!');
+    const toast = page.locator('div.fixed.bottom-4.right-4');
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText(/WIP limit/i);
   });
 });

@@ -52,6 +52,15 @@ const ColumnZone: Component<{
 const Board: Component<BoardProps> = (props) => {
   const queryClient = useQueryClient();
   const [selectedCardId, setSelectedCardId] = createSignal<string | null>(null);
+  const [shakingCardId, setShakingCardId] = createSignal<string | null>(null);
+  const [toast, setToast] = createSignal<{ message: string; visible: boolean } | null>(null);
+
+  const showToast = (message: string) => {
+    setToast({ message, visible: true });
+    setTimeout(() => {
+      setToast((prev) => (prev ? { ...prev, visible: false } : null));
+    }, 4000);
+  };
 
   const query = createQuery(() => ({
     queryKey: ['board', props.workspaceId],
@@ -79,10 +88,17 @@ const Board: Component<BoardProps> = (props) => {
 
       return { previousState };
     },
-    onError: (err, _newData, context) => {
+    onError: (err, newData, context) => {
       queryClient.setQueryData(['board', props.workspaceId], context?.previousState);
-      if (err instanceof Error && err.message === 'WIP_LIMIT_EXCEEDED') {
-        alert('WIP Limit Exceeded for this column!');
+      if (err instanceof Error) {
+        const isWip = err.message.includes('WIP limit') || err.message === 'WIP_LIMIT_EXCEEDED';
+        if (isWip) {
+          setShakingCardId(newData.cardId);
+          setTimeout(() => setShakingCardId(null), 300);
+          showToast(err.message === 'WIP_LIMIT_EXCEEDED' ? 'WIP Limit Exceeded!' : err.message);
+        } else {
+          showToast(err.message);
+        }
       }
     },
     onSettled: () => {
@@ -228,11 +244,45 @@ const Board: Component<BoardProps> = (props) => {
               {(swimlane) => (
                 <div class="flex flex-col">
                   {/* Swimlane Header */}
-                  <div class="h-8 flex items-center sticky left-0 z-10 bg-elevated/50 border-y border-base px-2">
-                    <span class="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                      {swimlane.title}
-                    </span>
-                  </div>
+                  {(() => {
+                    const swimlaneCardsCount = () => query.data?.cards.filter(c => c.current_swimlane_id === swimlane.id).length || 0;
+                    const isLaneAtLimit = () => swimlane.wip_limit !== null && swimlane.wip_limit !== undefined && swimlaneCardsCount() === swimlane.wip_limit;
+                    const isLaneExceeded = () => swimlane.wip_limit !== null && swimlane.wip_limit !== undefined && swimlaneCardsCount() > swimlane.wip_limit;
+
+                    return (
+                      <div
+                        class="h-8 flex items-center justify-between sticky left-0 z-10 border-y border-base px-2 transition-colors duration-200"
+                        classList={{
+                          'bg-elevated/50': swimlane.wip_limit === null || swimlane.wip_limit === undefined || (!isLaneAtLimit() && !isLaneExceeded()),
+                          'bg-orange-50': isLaneAtLimit(),
+                          'bg-red-50': isLaneExceeded(),
+                        }}
+                      >
+                        <span
+                          class="text-[10px] font-bold uppercase tracking-widest"
+                          classList={{
+                            'text-secondary': swimlane.wip_limit === null || swimlane.wip_limit === undefined || (!isLaneAtLimit() && !isLaneExceeded()),
+                            'text-orange-500': isLaneAtLimit(),
+                            'text-red-500': isLaneExceeded(),
+                          }}
+                        >
+                          {swimlane.title}
+                        </span>
+                        <Show when={swimlane.wip_limit !== null && swimlane.wip_limit !== undefined}>
+                          <span
+                            class="text-[9px] px-1.5 py-0.25 rounded border font-bold"
+                            classList={{
+                              'bg-elevated border-base text-tertiary': !isLaneAtLimit() && !isLaneExceeded(),
+                              'bg-orange-100 border-orange-200 text-orange-600': isLaneAtLimit(),
+                              'bg-red-100 border-red-200 text-red-600': isLaneExceeded(),
+                            }}
+                          >
+                            WIP {swimlaneCardsCount()} / {swimlane.wip_limit}
+                          </span>
+                        </Show>
+                      </div>
+                    );
+                  })()}
 
                   {/* Swimlane Content (Columns intersection) */}
                   <div class="flex">
@@ -259,6 +309,7 @@ const Board: Component<BoardProps> = (props) => {
                                 fullId={card.id}
                                 title={card.title}
                                 isBlocked={card.is_blocked}
+                                isShaking={shakingCardId() === card.id}
                                 onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
                                 onUnblock={() => unblockMutation.mutate(card.id)}
                                 onClick={() => setSelectedCardId(card.id)}
@@ -294,6 +345,16 @@ const Board: Component<BoardProps> = (props) => {
               cardId={selectedCardId()!}
             />
           </div>
+        </div>
+      </Show>
+
+      {/* Toast Notification for errors */}
+      <Show when={toast()?.visible}>
+        <div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 bg-surface border border-status-blocked border-l-4 shadow-xl p-4 rounded-md animate-in fade-in slide-in-from-bottom duration-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-status-blocked shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span class="text-sm font-medium text-primary">{toast()?.message}</span>
         </div>
       </Show>
     </div>

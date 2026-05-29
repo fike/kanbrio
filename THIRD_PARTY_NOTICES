@@ -1,0 +1,27 @@
+# Third-Party Software Notices and Licenses
+
+This file contains licensing and attribution notices for direct open-source dependencies used in Kanbrio.
+
+---
+
+## 1. Rust Backend Dependencies (apps/api)
+
+### sqlx, serde, serde_json, uuid, chrono, thiserror, anyhow
+* License: Dual Licensed under MIT or Apache-2.0
+* Copyright (c) the respective project contributors
+
+### axum, tokio, tower-http, tracing, tracing-subscriber, dotenvy, tower, http-body-util
+* License: MIT License
+* Copyright (c) the respective project contributors
+
+---
+
+## 2. Frontend Dependencies (apps/web)
+
+### @atlaskit/pragmatic-drag-and-drop, @atlaskit/pragmatic-drag-and-drop-hitbox
+* License: Apache-2.0
+* Copyright (c) Atlassian and contributors
+
+### solid-js, @solidjs/router, @solidjs/testing-library, @tailwindcss/postcss, @types/node, eslint, tailwindcss, vite
+* License: MIT License
+* Copyright (c) the respective project contributors

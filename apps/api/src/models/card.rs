@@ -95,13 +95,19 @@ impl Card {
             // Only enforce if moving from a different column
             if current_card.current_column_id != data.to_column_id {
                 let current_count: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND id != $2")
+                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2")
                         .bind(data.to_column_id)
                         .bind(data.card_id)
                         .fetch_one(&mut *tx)
                         .await?;
 
                 if current_count.0 >= limit as i64 {
+                    tracing::warn!(
+                        column_id = ?data.to_column_id,
+                        card_id = ?data.card_id,
+                        limit = limit,
+                        "WIP limit exceeded for column"
+                    );
                     return Err(crate::AppError::WipLimitExceeded {
                         entity: "column".to_string(),
                         limit,
@@ -120,13 +126,19 @@ impl Card {
             // Only enforce if moving from a different swimlane
             if current_card.current_swimlane_id != data.to_swimlane_id {
                 let current_count: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND id != $2")
+                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2")
                         .bind(data.to_swimlane_id)
                         .bind(data.card_id)
                         .fetch_one(&mut *tx)
                         .await?;
 
                 if current_count.0 >= limit as i64 {
+                    tracing::warn!(
+                        swimlane_id = ?data.to_swimlane_id,
+                        card_id = ?data.card_id,
+                        limit = limit,
+                        "WIP limit exceeded for swimlane"
+                    );
                     return Err(crate::AppError::WipLimitExceeded {
                         entity: "swimlane".to_string(),
                         limit,
@@ -213,13 +225,19 @@ impl Card {
 
         if let Some(limit) = wip_limit.0 {
             let current_count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false",
+                "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL",
             )
             .bind(data.current_column_id)
             .fetch_one(&mut *tx)
             .await?;
 
             if current_count.0 >= limit as i64 {
+                tracing::warn!(
+                    column_id = ?data.current_column_id,
+                    workspace_id = ?data.workspace_id,
+                    limit = limit,
+                    "WIP limit exceeded for column on card creation"
+                );
                 return Err(crate::AppError::WipLimitExceeded {
                     entity: "column".to_string(),
                     limit,
@@ -235,13 +253,19 @@ impl Card {
 
         if let Some(limit) = swimlane_wip_limit.0 {
             let current_count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false",
+                "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL",
             )
             .bind(data.current_swimlane_id)
             .fetch_one(&mut *tx)
             .await?;
 
             if current_count.0 >= limit as i64 {
+                tracing::warn!(
+                    swimlane_id = ?data.current_swimlane_id,
+                    workspace_id = ?data.workspace_id,
+                    limit = limit,
+                    "WIP limit exceeded for swimlane on card creation"
+                );
                 return Err(crate::AppError::WipLimitExceeded {
                     entity: "swimlane".to_string(),
                     limit,

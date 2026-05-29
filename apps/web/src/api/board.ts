@@ -74,7 +74,12 @@ export const moveCard = async (
 
   if (!response.ok) {
     if (response.status === 409) {
-      throw new Error('WIP_LIMIT_EXCEEDED');
+      try {
+        const errData = await response.json();
+        throw new Error(errData.error || 'WIP_LIMIT_EXCEEDED');
+      } catch {
+        throw new Error('WIP_LIMIT_EXCEEDED');
+      }
     }
     throw new Error('Failed to move card');
   }
