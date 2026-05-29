@@ -7,7 +7,8 @@ pub use error::AppError;
 
 use crate::handlers::auth::{login, logout, me, oauth_callback, oauth_redirect, register};
 use crate::handlers::board::{
-    block_card, get_board_state, get_card_history, move_card, unblock_card,
+    assign_card, block_card, get_board_state, get_card_history, move_card, set_user_wip_limit,
+    unblock_card,
 };
 use axum::{
     Router,
@@ -48,6 +49,14 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/history",
             get(get_card_history),
+        )
+        .route(
+            "/api/workspaces/:workspace_id/members/:user_id/wip-limit",
+            axum::routing::put(set_user_wip_limit),
+        )
+        .route(
+            "/api/workspaces/:workspace_id/cards/:card_id/assign",
+            post(assign_card),
         )
         .layer(TraceLayer::new_for_http())
         .layer(cors)

@@ -11,6 +11,7 @@ pub struct Column {
     pub title: String,
     pub position: i32,
     pub wip_limit: Option<i32>,
+    pub is_done: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -40,7 +41,7 @@ impl BoardState {
         workspace_id: Uuid,
     ) -> Result<Self, crate::AppError> {
         let columns_fut = sqlx::query_as::<_, Column>(
-            "SELECT id, workspace_id, title, position, wip_limit, created_at, updated_at FROM columns WHERE workspace_id = $1 ORDER BY position"
+            "SELECT id, workspace_id, title, position, wip_limit, is_done, created_at, updated_at FROM columns WHERE workspace_id = $1 ORDER BY position"
         )
         .bind(workspace_id)
         .fetch_all(pool);

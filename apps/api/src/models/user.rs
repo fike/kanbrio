@@ -36,6 +36,7 @@ pub struct WorkspaceMember {
     pub workspace_id: Uuid,
     pub user_id: Uuid,
     pub role: String,
+    pub wip_limit: Option<i32>,
     pub joined_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

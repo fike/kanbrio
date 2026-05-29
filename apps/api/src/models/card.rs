@@ -11,6 +11,7 @@ pub struct Card {
     pub title: String,
     pub current_column_id: Uuid,
     pub current_swimlane_id: Uuid,
+    pub assigned_user_id: Option<Uuid>,
     pub is_blocked: bool,
     pub is_archived: bool,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -47,6 +48,7 @@ pub struct MoveCard {
 
 impl Card {
     #[tracing::instrument(skip(pool))]
+    #[allow(clippy::collapsible_if)]
     pub async fn move_to(pool: &sqlx::PgPool, data: MoveCard) -> Result<Self, crate::AppError> {
         let mut tx = pool.begin().await?;
 
@@ -143,6 +145,55 @@ impl Card {
                         entity: "swimlane".to_string(),
                         limit,
                     });
+                }
+            }
+        }
+
+        let source_col: (bool,) = sqlx::query_as("SELECT is_done FROM columns WHERE id = $1")
+            .bind(current_card.current_column_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        let target_col: (bool,) = sqlx::query_as("SELECT is_done FROM columns WHERE id = $1")
+            .bind(data.to_column_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+        if let Some(target_user) = current_card.assigned_user_id {
+            if source_col.0 && !target_col.0 {
+                let member: crate::models::user::WorkspaceMember = sqlx::query_as(
+                    "SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE"
+                )
+                .bind(data.workspace_id)
+                .bind(target_user)
+                .fetch_one(&mut *tx)
+                .await?;
+
+                if let Some(limit) = member.wip_limit {
+                    let active_count: (i64,) = sqlx::query_as(
+                        r#"
+                        SELECT COUNT(*)
+                        FROM cards c
+                        INNER JOIN columns col ON c.current_column_id = col.id
+                        WHERE c.assigned_user_id = $1
+                          AND c.workspace_id = $2
+                          AND col.is_done = FALSE
+                          AND c.is_archived = FALSE
+                          AND c.deleted_at IS NULL
+                          AND c.id != $3
+                        "#,
+                    )
+                    .bind(target_user)
+                    .bind(data.workspace_id)
+                    .bind(data.card_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
+                    if active_count.0 >= limit as i64 {
+                        return Err(crate::AppError::WipLimitExceeded {
+                            entity: "user".to_string(),
+                            limit,
+                        });
+                    }
                 }
             }
         }
@@ -449,7 +500,7 @@ impl Card {
                 AND NOT (c.id = ANY(h.path))  -- Security: Cycle detection
                 AND c.deleted_at IS NULL      -- SRE: Exclude deleted
             )
-            SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, is_blocked, is_archived, deleted_at, created_at, updated_at
+            SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, assigned_user_id, is_blocked, is_archived, deleted_at, created_at, updated_at
             FROM hierarchy
             "#
         )
@@ -493,5 +544,158 @@ impl Card {
         }
 
         Ok(build_tree(root_card, &nodes_by_parent))
+    }
+
+    /// Safely assigns a card to a user after verifying multi-tenant boundaries and user WIP limits.
+    #[tracing::instrument(skip(pool))]
+    #[allow(clippy::too_many_arguments, clippy::collapsible_if)]
+    pub async fn assign_to(
+        pool: &sqlx::PgPool,
+        workspace_id: Uuid,
+        actor_id: Uuid,
+        card_id: Uuid,
+        assignee_id: Option<Uuid>,
+        is_admin: bool,
+        override_limit: bool,
+        override_reason: Option<String>,
+    ) -> Result<Self, crate::AppError> {
+        let mut tx = pool.begin().await?;
+
+        // First, perform a lightweight, non-locking select
+        let card_workspace: (Uuid,) =
+            sqlx::query_as("SELECT workspace_id FROM cards WHERE id = $1")
+                .bind(card_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| match e {
+                    sqlx::Error::RowNotFound => crate::AppError::NotFound,
+                    _ => crate::AppError::Database(e),
+                })?;
+
+        if card_workspace.0 != workspace_id {
+            return Err(crate::AppError::Forbidden);
+        }
+
+        // Then, lock the row using SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE
+        let card = sqlx::query_as::<_, Card>(
+            "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE",
+        )
+        .bind(card_id)
+        .bind(workspace_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => crate::AppError::NotFound,
+            _ => crate::AppError::Database(e),
+        })?;
+
+        // 2. Determine target column's completed state
+        let target_col: (bool,) =
+            sqlx::query_as("SELECT is_done FROM columns WHERE id = $1 AND workspace_id = $2")
+                .bind(card.current_column_id)
+                .bind(workspace_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        let is_target_active = !target_col.0;
+
+        if let Some(target_user) = assignee_id {
+            // 3. Pessimistic lock on the user's membership to serialize parallel assignments
+            let member: crate::models::user::WorkspaceMember = sqlx::query_as(
+                "SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE"
+            )
+            .bind(workspace_id)
+            .bind(target_user)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => crate::AppError::BadRequest("Target assignee is not a workspace member".into()),
+                _ => crate::AppError::Database(e),
+            })?;
+
+            // 4. Enforce User WIP Limit only if target column is active
+            if is_target_active {
+                if let Some(limit) = member.wip_limit {
+                    if !override_limit || !is_admin {
+                        // Count active cards assigned to this user in active columns
+                        let active_count: (i64,) = sqlx::query_as(
+                            r#"
+                            SELECT COUNT(*)
+                            FROM cards c
+                            INNER JOIN columns col ON c.current_column_id = col.id
+                            WHERE c.assigned_user_id = $1
+                              AND c.workspace_id = $2
+                              AND col.is_done = FALSE
+                              AND c.is_archived = FALSE
+                              AND c.deleted_at IS NULL
+                              AND c.id != $3
+                            "#,
+                        )
+                        .bind(target_user)
+                        .bind(workspace_id)
+                        .bind(card_id)
+                        .fetch_one(&mut *tx)
+                        .await?;
+
+                        if active_count.0 >= limit as i64 {
+                            tracing::warn!(
+                                user_id = ?target_user,
+                                limit = limit,
+                                active_count = active_count.0,
+                                "User WIP limit exceeded"
+                            );
+                            return Err(crate::AppError::WipLimitExceeded {
+                                entity: "user".to_string(),
+                                limit,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Update card's assignee
+        let updated_card = sqlx::query_as::<_, Card>(
+            r#"
+            UPDATE cards
+            SET assigned_user_id = $1, updated_at = NOW()
+            WHERE id = $2 AND workspace_id = $3
+            RETURNING *
+            "#,
+        )
+        .bind(assignee_id)
+        .bind(card_id)
+        .bind(workspace_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        // 6. Record transition event
+        let transition_type = if override_limit && is_admin {
+            "assign_override".to_string()
+        } else {
+            "assign".to_string()
+        };
+
+        let payload = serde_json::json!({
+            "previous_assignee": card.assigned_user_id,
+            "new_assignee": assignee_id,
+            "override_reason": override_reason
+        });
+
+        sqlx::query(
+            r#"
+            INSERT INTO card_transitions (card_id, user_id, transition_type, payload)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(card_id)
+        .bind(actor_id) // Transition actor
+        .bind(transition_type)
+        .bind(payload)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(updated_card)
     }
 }
