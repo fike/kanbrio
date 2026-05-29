@@ -1,6 +1,7 @@
 import { render } from 'solid-js/web';
 import { QueryClient, QueryClientProvider } from '@tanstack/solid-query';
-import App from './App';
+import { Router } from '@solidjs/router';
+import App, { AppRoutes } from './App';
 import './index.css';
 
 const queryClient = new QueryClient();
@@ -15,9 +16,11 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <Router root={App}>
+      <QueryClientProvider client={queryClient}>
+        <AppRoutes />
+      </QueryClientProvider>
+    </Router>
   ),
   root!,
 );
