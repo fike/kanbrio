@@ -8,15 +8,15 @@
     --color-bg-base: #F9FAFB;
     --color-bg-surface: #FFFFFF;
     --color-bg-elevated: #F3F4F6;
-    
+
     /* Text */
     --color-text-primary: #111827;
     --color-text-secondary: #4B5563;
     --color-text-tertiary: #9CA3AF;
-    
+
     /* Borders */
     --color-border-base: #E5E7EB;
-    
+
     /* Semantic & Accents */
     --color-accent-primary: #2563EB;
     --color-status-todo: #64748B;
@@ -30,12 +30,12 @@
     --color-bg-base: #0F172A;
     --color-bg-surface: #1E293B;
     --color-bg-elevated: #334155;
-    
+
     /* Text */
     --color-text-primary: #F8FAFC;
     --color-text-secondary: #94A3B8;
     --color-text-tertiary: #64748B;
-    
+
     /* Borders */
     --color-border-base: #334155;
   }
@@ -49,5 +49,16 @@
   /* Universal Focus Ring for Accessibility */
   *:focus-visible {
     @apply outline-none ring-2 ring-accent-primary ring-offset-2 ring-offset-base;
+  }
+}
+
+@layer utilities {
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  .animate-shake {
+    animation: shake 0.3s ease-in-out;
   }
 }

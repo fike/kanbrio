@@ -52,6 +52,15 @@ const ColumnZone: Component<{
 const Board: Component<BoardProps> = (props) => {
   const queryClient = useQueryClient();
   const [selectedCardId, setSelectedCardId] = createSignal<string | null>(null);
+  const [shakingCardId, setShakingCardId] = createSignal<string | null>(null);
+  const [toast, setToast] = createSignal<{ message: string; visible: boolean } | null>(null);
+
+  const showToast = (message: string) => {
+    setToast({ message, visible: true });
+    setTimeout(() => {
+      setToast((prev) => (prev ? { ...prev, visible: false } : null));
+    }, 4000);
+  };
 
   const query = createQuery(() => ({
     queryKey: ['board', props.workspaceId],
@@ -79,10 +88,17 @@ const Board: Component<BoardProps> = (props) => {
 
       return { previousState };
     },
-    onError: (err, _newData, context) => {
+    onError: (err, newData, context) => {
       queryClient.setQueryData(['board', props.workspaceId], context?.previousState);
-      if (err instanceof Error && err.message === 'WIP_LIMIT_EXCEEDED') {
-        alert('WIP Limit Exceeded for this column!');
+      if (err instanceof Error) {
+        const isWip = err.message.includes('WIP limit') || err.message === 'WIP_LIMIT_EXCEEDED';
+        if (isWip) {
+          setShakingCardId(newData.cardId);
+          setTimeout(() => setShakingCardId(null), 300);
+          showToast(err.message === 'WIP_LIMIT_EXCEEDED' ? 'WIP Limit Exceeded!' : err.message);
+        } else {
+          showToast(err.message);
+        }
       }
     },
     onSettled: () => {
@@ -180,18 +196,44 @@ const Board: Component<BoardProps> = (props) => {
           <div class="w-12 shrink-0 border-r border-base" />
 
           <For each={sortedColumns()}>
-            {(column) => (
-              <div class="w-[300px] p-3 flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-primary truncate">
-                  {column.title}
-                </h3>
-                <Show when={column.wip_limit}>
-                  <span class="text-[10px] px-1.5 py-0.5 bg-elevated rounded border border-base text-tertiary">
-                    WIP: {column.wip_limit}
-                  </span>
-                </Show>
-              </div>
-            )}
+            {(column) => {
+              const columnCardsCount = () => query.data?.cards.filter(c => c.current_column_id === column.id).length || 0;
+              const isAtLimit = () => column.wip_limit !== null && columnCardsCount() === column.wip_limit;
+              const isExceeded = () => column.wip_limit !== null && columnCardsCount() > column.wip_limit;
+
+              return (
+                <div
+                  class="w-[300px] p-3 flex items-center justify-between transition-colors duration-200 border-r border-base/50 last:border-r-0"
+                  classList={{
+                    'bg-orange-50': isAtLimit(),
+                    'bg-red-50': isExceeded(),
+                  }}
+                >
+                  <h3
+                    class="text-sm font-semibold truncate"
+                    classList={{
+                      'text-primary': !isAtLimit() && !isExceeded(),
+                      'text-orange-500': isAtLimit(),
+                      'text-red-500': isExceeded(),
+                    }}
+                  >
+                    {column.title}
+                  </h3>
+                  <Show when={column.wip_limit !== null}>
+                    <span
+                      class="text-[10px] px-1.5 py-0.5 rounded border"
+                      classList={{
+                        'bg-elevated border-base text-tertiary': !isAtLimit() && !isExceeded(),
+                        'bg-orange-100 border-orange-200 text-orange-600': isAtLimit(),
+                        'bg-red-100 border-red-200 text-red-600': isExceeded(),
+                      }}
+                    >
+                      WIP {columnCardsCount()} / {column.wip_limit}
+                    </span>
+                  </Show>
+                </div>
+              );
+            }}
           </For>
         </div>
 
@@ -202,11 +244,45 @@ const Board: Component<BoardProps> = (props) => {
               {(swimlane) => (
                 <div class="flex flex-col">
                   {/* Swimlane Header */}
-                  <div class="h-8 flex items-center sticky left-0 z-10 bg-elevated/50 border-y border-base px-2">
-                    <span class="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                      {swimlane.title}
-                    </span>
-                  </div>
+                  {(() => {
+                    const swimlaneCardsCount = () => query.data?.cards.filter(c => c.current_swimlane_id === swimlane.id).length || 0;
+                    const isLaneAtLimit = () => swimlane.wip_limit !== null && swimlane.wip_limit !== undefined && swimlaneCardsCount() === swimlane.wip_limit;
+                    const isLaneExceeded = () => swimlane.wip_limit !== null && swimlane.wip_limit !== undefined && swimlaneCardsCount() > swimlane.wip_limit;
+
+                    return (
+                      <div
+                        class="h-8 flex items-center justify-between sticky left-0 z-10 border-y border-base px-2 transition-colors duration-200"
+                        classList={{
+                          'bg-elevated/50': swimlane.wip_limit === null || swimlane.wip_limit === undefined || (!isLaneAtLimit() && !isLaneExceeded()),
+                          'bg-orange-50': isLaneAtLimit(),
+                          'bg-red-50': isLaneExceeded(),
+                        }}
+                      >
+                        <span
+                          class="text-[10px] font-bold uppercase tracking-widest"
+                          classList={{
+                            'text-secondary': swimlane.wip_limit === null || swimlane.wip_limit === undefined || (!isLaneAtLimit() && !isLaneExceeded()),
+                            'text-orange-500': isLaneAtLimit(),
+                            'text-red-500': isLaneExceeded(),
+                          }}
+                        >
+                          {swimlane.title}
+                        </span>
+                        <Show when={swimlane.wip_limit !== null && swimlane.wip_limit !== undefined}>
+                          <span
+                            class="text-[9px] px-1.5 py-0.25 rounded border font-bold"
+                            classList={{
+                              'bg-elevated border-base text-tertiary': !isLaneAtLimit() && !isLaneExceeded(),
+                              'bg-orange-100 border-orange-200 text-orange-600': isLaneAtLimit(),
+                              'bg-red-100 border-red-200 text-red-600': isLaneExceeded(),
+                            }}
+                          >
+                            WIP {swimlaneCardsCount()} / {swimlane.wip_limit}
+                          </span>
+                        </Show>
+                      </div>
+                    );
+                  })()}
 
                   {/* Swimlane Content (Columns intersection) */}
                   <div class="flex">
@@ -233,6 +309,7 @@ const Board: Component<BoardProps> = (props) => {
                                 fullId={card.id}
                                 title={card.title}
                                 isBlocked={card.is_blocked}
+                                isShaking={shakingCardId() === card.id}
                                 onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
                                 onUnblock={() => unblockMutation.mutate(card.id)}
                                 onClick={() => setSelectedCardId(card.id)}
@@ -252,7 +329,7 @@ const Board: Component<BoardProps> = (props) => {
 
       {/* Card History Sidebar */}
       <Show when={selectedCardId()}>
-        <div class="fixed inset-y-0 right-0 w-96 bg-surface shadow-2xl border-l border-base z-50 flex flex-col animate-in slide-in-from-right duration-300">
+        <div data-testid="card-history-sidebar" class="fixed inset-y-0 right-0 w-96 bg-surface shadow-2xl border-l border-base z-50 flex flex-col animate-in slide-in-from-right duration-300">
           <div class="flex justify-between items-center p-4 border-b border-base bg-elevated/20">
             <h2 class="text-sm font-bold uppercase tracking-widest text-primary">Card History</h2>
             <button
@@ -268,6 +345,16 @@ const Board: Component<BoardProps> = (props) => {
               cardId={selectedCardId()!}
             />
           </div>
+        </div>
+      </Show>
+
+      {/* Toast Notification for errors */}
+      <Show when={toast()?.visible}>
+        <div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 bg-surface border border-status-blocked border-l-4 shadow-xl p-4 rounded-md animate-in fade-in slide-in-from-bottom duration-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-status-blocked shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span class="text-sm font-medium text-primary">{toast()?.message}</span>
         </div>
       </Show>
     </div>

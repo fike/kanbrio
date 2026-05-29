@@ -21,6 +21,7 @@ pub struct Swimlane {
     pub workspace_id: Uuid,
     pub title: String,
     pub position: i32,
+    pub wip_limit: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -45,7 +46,7 @@ impl BoardState {
         .fetch_all(pool);
 
         let swimlanes_fut = sqlx::query_as::<_, Swimlane>(
-            "SELECT id, workspace_id, title, position, created_at, updated_at FROM swimlanes WHERE workspace_id = $1 ORDER BY position"
+            "SELECT id, workspace_id, title, position, wip_limit, created_at, updated_at FROM swimlanes WHERE workspace_id = $1 ORDER BY position"
         )
         .bind(workspace_id)
         .fetch_all(pool);

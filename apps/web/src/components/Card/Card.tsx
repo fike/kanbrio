@@ -9,6 +9,7 @@ export interface CardProps {
   fullId: string; // The UUID
   title: string;
   isBlocked?: boolean;
+  isShaking?: boolean;
   blockerReason?: string;
   parentTitle?: string;
   subtasksCount?: number;
@@ -56,6 +57,7 @@ const Card: Component<CardProps> = (props) => {
         'border-base': !props.isBlocked,
         'border-status-blocked bg-status-blocked/5 ring-1 ring-status-blocked': props.isBlocked,
         'opacity-50 scale-105 shadow-xl rotate-1': isDragging(),
+        'animate-shake': props.isShaking,
       }}
       aria-label={`Card: ${props.title}${props.isBlocked ? ', Blocked' : ''}`}
     >

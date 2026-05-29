@@ -23,7 +23,10 @@ test.describe('Card Lifecycle E2E', () => {
     });
 
     await card.hover();
-    await card.getByTitle('Block card').click();
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/block') && r.status() === 200),
+      card.getByTitle('Block card').click()
+    ]);
 
     // Verify visual state (optimistic or settled)
     await expect(card).toHaveAttribute('aria-label', `Card: ${CARD_TITLE}, Blocked`);
@@ -31,7 +34,7 @@ test.describe('Card Lifecycle E2E', () => {
 
     // 2. Open History
     await card.click();
-    const sidebar = page.locator('div:has-text("Card History")').last();
+    const sidebar = page.getByTestId('card-history-sidebar');
     await expect(sidebar).toBeVisible();
 
     // Verify BLOCK event in history
@@ -40,30 +43,46 @@ test.describe('Card Lifecycle E2E', () => {
 
     // 3. Unblock the card
     await card.hover();
-    await card.getByTitle('Unblock card').click();
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/unblock') && r.status() === 200),
+      card.getByTitle('Unblock card').click()
+    ]);
 
     // Verify visual state
     await expect(card).toHaveAttribute('aria-label', `Card: ${CARD_TITLE}`);
 
     // Verify UNBLOCK event in history
     await expect(sidebar.getByTestId('history-event-unblock').first()).toBeVisible();
-  });
+    });
 
-  test('should persist blocked state after page reload', async ({ page }) => {
+    test('should persist blocked state after page reload', async ({ page }) => {
     await page.goto('/');
     const card = page.locator('div[role="listitem"]').filter({ hasText: CARD_TITLE });
+
+    // Ensure clean state: unblock if already blocked
+    const initialLabel = await card.getAttribute('aria-label');
+    if (initialLabel?.includes('Blocked')) {
+      await card.hover();
+      await Promise.all([
+        page.waitForResponse(r => r.url().includes('/unblock') && r.status() === 200),
+        card.getByTitle('Unblock card').click()
+      ]);
+    }
 
     // 1. Block the card
     page.once('dialog', async dialog => {
       await dialog.accept('Persistence Test');
     });
     await card.hover();
-    await card.getByTitle('Block card').click();
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/block') && r.status() === 200),
+      card.getByTitle('Block card').click()
+    ]);
+
     await expect(card).toHaveAttribute('aria-label', `Card: ${CARD_TITLE}, Blocked`);
 
     // 2. Reload the page
     await page.reload();
-
     // 3. Verify state is still there
     const cardAfterReload = page.locator('div[role="listitem"]').filter({ hasText: CARD_TITLE });
     await expect(cardAfterReload).toHaveAttribute('aria-label', `Card: ${CARD_TITLE}, Blocked`);
@@ -71,7 +90,7 @@ test.describe('Card Lifecycle E2E', () => {
 
     // 4. Verify history also survived
     await cardAfterReload.click();
-    const sidebar = page.locator('div:has-text("Card History")').last();
+    const sidebar = page.getByTestId('card-history-sidebar');
     await expect(sidebar.getByTestId('history-event-block').first()).toBeVisible();
     await expect(sidebar.getByText('Reason: Persistence Test')).toBeVisible();
   });
@@ -81,21 +100,36 @@ test.describe('Card Lifecycle E2E', () => {
     const card = page.locator('div[role="listitem"]').filter({ hasText: CARD_TITLE });
     const targetZone = page.getByTestId('column-zone-Doing').first();
 
+    // Ensure clean state: unblock if already blocked
+    const initialLabel = await card.getAttribute('aria-label');
+    if (initialLabel?.includes('Blocked')) {
+      await card.hover();
+      await Promise.all([
+        page.waitForResponse(r => r.url().includes('/unblock') && r.status() === 200),
+        card.getByTitle('Unblock card').click()
+      ]);
+    }
+
     // 1. Move the card
-    await card.dragTo(targetZone);
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/move') && r.status() === 200),
+      card.dragTo(targetZone)
+    ]);
 
     // 2. Immediately block it (simulating rapid user interaction)
     page.once('dialog', async dialog => {
       await dialog.accept('Rapid Action Reason');
     });
     await card.hover();
-    await card.getByTitle('Block card').click();
-
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/block') && r.status() === 200),
+      card.getByTitle('Block card').click()
+    ]);
     // 3. Verify both states are captured
     await expect(card).toHaveAttribute('aria-label', `Card: ${CARD_TITLE}, Blocked`);
 
     await card.click();
-    const sidebar = page.locator('div:has-text("Card History")').last();
+    const sidebar = page.getByTestId('card-history-sidebar');
 
     // Both events should be visible in the timeline
     await expect(sidebar.getByTestId('history-event-block').first()).toBeVisible();

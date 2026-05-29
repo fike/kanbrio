@@ -23,6 +23,10 @@ All AI coding agents (like @developer) **MUST** strictly adhere to these tokens 
   - `status-doing`: #EAB308 (Yellow)
   - `status-done`: #22C55E (Green)
   - `status-blocked`: #EF4444 (Red)
+- **WIP States (Headers & Counts):**
+  - `wip-normal`: `text-secondary`
+  - `wip-at-limit`: `text-orange-500 bg-orange-50` (Dark: `text-orange-400 bg-orange-900/20`)
+  - `wip-exceeded`: `text-red-500 bg-red-50` (Dark: `text-red-400 bg-red-900/20`)
 
 ## 3. Typography
 - **Font Family:**
@@ -77,9 +81,10 @@ This section defines the structural components for the Kanban experience, emphas
 ### 7.2 The 2D Grid
 - **Columns:**
   - Width: Fixed `300px` to `350px`.
-  - Header: `bg-elevated/50 sticky top-0 p-3 border-b border-base`. Includes `Title` and `WIP Count`.
+  - Header: `bg-elevated/50 sticky top-0 p-3 border-b border-base flex justify-between items-center`. Includes `Title` and `WIP Count`.
+  - WIP Count Indicator: Format as `[Count/Limit]` (e.g., `[3/5]`). Use `wip-normal`, `wip-at-limit`, or `wip-exceeded` based on capacity.
 - **Swimlanes:**
-  - Divider: `h-10 bg-base/80 sticky left-0 z-10 p-2 flex items-center border-y border-base`.
+  - Divider: `h-10 bg-base/80 sticky left-0 z-10 p-2 flex items-center justify-between border-y border-base`. Includes `Title` and `WIP Count` (optional).
   - Content: Cards are grouped horizontally within these dividers.
 - **Empty State:** Columns with no cards should show a subtle dashed placeholder.
 
@@ -115,6 +120,10 @@ This section defines the structural components for the Kanban experience, emphas
 - **Insertion Indicator (Line):**
   - A horizontal/vertical line of `2px` with a `4px` dot at the start.
   - Color: `bg-accent-primary`.
-- **Optimistic UI:**
+- **Optimistic UI Error Handling:**
   - Move card instantly on drop.
-  - On Error (e.g., WIP Limit): Revert position with a `shake` animation (duration-300).
+  - On Error (e.g., WIP Limit 409 Conflict): Revert position with a `shake` animation (duration-300).
+  - **Toast Notification:** Display a transient toast at the bottom right to explain the rejection.
+    - Container: `bg-surface border border-status-blocked border-l-4 shadow-xl p-4 rounded-md flex items-center gap-3`.
+    - Text: `text-sm font-medium text-primary`.
+    - Icon: `ShieldAlert` or `AlertCircle` using `text-status-blocked`.
