@@ -95,3 +95,11 @@ bd close <id>         # Complete work
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
+
+## 🔗 Pull Request & GitHub Issue Integration Standards
+
+Whenever creating or editing a Pull Request (PR) on GitHub, agents MUST ensure complete trace link association:
+1. **Rich PR Descriptions**: Write a structured body detailing the exact technical changes made, files added/modified, and the results of locally executed quality checks/tests.
+2. **Explicit Closing Tags**:
+   - For partial implementations, discovery reports, or technical planning PRs, include `Ref #<issue_number>` in the description.
+   - For full implementations or bug-fix PRs, you **MUST** include `Closes #<issue_number>` or `Fixes #<issue_number>` at the bottom of the PR description to ensure the corresponding GitHub issue is automatically closed when a human reviews and merges the PR.
