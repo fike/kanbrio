@@ -22,6 +22,15 @@ pub enum AppError {
 
     #[error("WIP limit {limit} exceeded for {entity}")]
     WipLimitExceeded { entity: String, limit: i32 },
+
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 impl IntoResponse for AppError {
@@ -54,6 +63,16 @@ impl IntoResponse for AppError {
                 format!("WIP limit {} exceeded for {}", limit, entity),
                 Some("WIP_LIMIT_EXCEEDED".to_string()),
             ),
+            AppError::Unauthorized(ref msg) => (StatusCode::UNAUTHORIZED, msg.clone(), None),
+            AppError::BadRequest(ref msg) => (StatusCode::BAD_REQUEST, msg.clone(), None),
+            AppError::Internal(ref msg) => {
+                tracing::error!("Internal error: {}", msg);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                    None,
+                )
+            }
         };
 
         let mut body = json!({

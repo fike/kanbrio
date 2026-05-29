@@ -1,9 +1,11 @@
 pub mod error;
 pub mod handlers;
 pub mod models;
+pub mod services;
 
 pub use error::AppError;
 
+use crate::handlers::auth::{login, logout, me, oauth_callback, oauth_redirect, register};
 use crate::handlers::board::{
     block_card, get_board_state, get_card_history, move_card, unblock_card,
 };
@@ -24,6 +26,12 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
 
     Router::new()
         .route("/", get(|| async { "Kanbrio API" }))
+        .route("/api/auth/register", post(register))
+        .route("/api/auth/login", post(login))
+        .route("/api/auth/logout", post(logout))
+        .route("/api/auth/me", get(me))
+        .route("/api/auth/login/:provider", get(oauth_redirect))
+        .route("/api/auth/callback/:provider", get(oauth_callback))
         .route("/api/workspaces/:workspace_id/board", get(get_board_state))
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/move",
