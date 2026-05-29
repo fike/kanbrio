@@ -40,6 +40,7 @@ Before asking for human approval, the following gates must be cleared:
 
 ### 6. Merge & Close
 - Final integration into the `main` branch and closing of tracking issues.
+- **GitHub Traceability**: All Pull Requests must have rich descriptions listing technical details and must explicitly link to relevant issues. Partial PRs should use `Ref #<issue_number>` and implementation PRs must use `Closes #<issue_number>` or `Fixes #<issue_number>` to ensure automatic closing on human merge.
 
 ---
 

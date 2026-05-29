@@ -127,3 +127,158 @@ This section defines the structural components for the Kanban experience, emphas
     - Container: `bg-surface border border-status-blocked border-l-4 shadow-xl p-4 rounded-md flex items-center gap-3`.
     - Text: `text-sm font-medium text-primary`.
     - Icon: `ShieldAlert` or `AlertCircle` using `text-status-blocked`.
+
+## 8. Component Styling Guidelines: Login View
+
+This section establishes standard presentation guidelines for the main login gate, supporting zero-friction OAuth onboarding and secure credentials input.
+
+### 8.1 Layout & Container
+- **Background Scenery:** `bg-base` with a centered flex layout container.
+- **Card Panel Structure:** `w-full max-w-[400px] p-6 bg-surface border border-base rounded-lg shadow-sm flex flex-col gap-6 transition-all duration-300 ease-standard`.
+  - **Dark Mode:** `dark:bg-slate-900/50 dark:border-slate-800/80 dark:shadow-xl`.
+- **Card Header:**
+  - **Title:** `text-2xl font-semibold tracking-tight text-primary` (`h1` hierarchy).
+  - **Subtitle:** `text-sm text-secondary` (`body` hierarchy).
+
+### 8.2 OAuth Button Guidelines (Google and GitHub)
+Both provider actions must display equal layout prominence. They must adhere to strict branding guidelines while upholding minimum accessibility contrast ratios.
+- **Common Layout Structure:** `w-full flex items-center justify-center gap-3 px-4 py-2 border border-base rounded-md font-medium text-sm transition-all duration-150 focus:ring-2 focus:ring-accent-primary focus:outline-none`.
+- **Google OAuth Button:**
+  - **Light Mode:** `bg-surface hover:bg-elevated active:bg-elevated/80 text-primary border-base`.
+  - **Dark Mode:** `dark:bg-slate-800 dark:hover:bg-slate-700/80 dark:active:bg-slate-800/60 dark:text-slate-200 dark:border-slate-700`.
+  - **Icon:** Google Multi-color Icon G-brand (`w-4 h-4 flex-shrink-0`).
+- **GitHub OAuth Button:**
+  - **Light Mode:** `bg-slate-900 hover:bg-slate-800 active:bg-black text-white border-transparent`.
+  - **Dark Mode:** `dark:bg-slate-800 dark:hover:bg-slate-700 dark:active:bg-slate-900 dark:text-white dark:border-slate-700`.
+  - **Icon:** GitHub Octocat SVG icon (`w-4 h-4 fill-current flex-shrink-0`).
+
+### 8.3 Credentials Form & Input Guidelines
+A traditional credentials form is offered as a fallback.
+- **Form Layout:** `<form>` styled as `flex flex-col gap-4`.
+- **Separator (Horizontal Divider):**
+  - **Styling:** `w-full flex items-center gap-3 my-2 text-[10px] font-semibold text-tertiary uppercase tracking-wider before:h-px before:flex-1 before:bg-base after:h-px after:flex-1 after:bg-base`.
+- **Form Input Groups:**
+  - **Layout:** `flex flex-col gap-1.5`.
+  - **Label Typography:** `text-xs font-semibold text-secondary tracking-wide uppercase select-none`. Must include an explicit `for` attribute mapped to the field's `id`.
+  - **Input Styling:** `px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all placeholder:text-tertiary text-primary`.
+
+### 8.4 Form State Variations (Hover, Active, Focus, Loading, Error)
+- **Hover States:**
+  - Input Fields: `hover:border-secondary/50`.
+  - Primary Action Button: `bg-accent-primary hover:bg-accent-primary/95`.
+- **Active (Press) States:**
+  - Action Buttons: `scale-[0.98] transition-transform duration-100`.
+- **Focus States:**
+  - Interactive elements must apply `focus:ring-2 focus:ring-accent-primary/20 focus:border-accent-primary focus:outline-none`.
+- **Loading / Disabled State:**
+  - Applied to the form container during network operations. Both input fields and submit buttons must receive the `disabled` property and `aria-disabled="true"`.
+  - Display properties: `opacity-60 cursor-not-allowed select-none bg-elevated/50`.
+  - Button state changes: Show a high-performance spinner (`w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin`) alongside loading helper text.
+- **Field Error State:**
+  - Applies to invalid inputs: `border-status-blocked bg-status-blocked/5 focus:ring-status-blocked/20 text-status-blocked placeholder:text-status-blocked/40`.
+  - Help text beneath input: `text-xs text-status-blocked font-medium mt-0.5`.
+- **Form Error Banner:**
+  - Renders at the top of the form: `bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex gap-2 items-start animate-shake`.
+
+### 8.5 Access Control and Validation Attributes (TDD & ARIA Constraints)
+The developer MUST implement the following testing hooks and ARIA landmarks to ensure seamless test coverage:
+- **Login Container:** `data-testid="login-view"`
+- **Google Button:** `data-testid="oauth-google-button"` | `role="button"` | `aria-label="Sign in with Google"`
+- **GitHub Button:** `data-testid="oauth-github-button"` | `role="button"` | `aria-label="Sign in with GitHub"`
+- **Credentials Form:** `data-testid="login-credentials-form"`
+- **Email Input:** `data-testid="login-email-input"` | `id="email"` | `type="email"` | `aria-required="true"`
+- **Password Input:** `data-testid="login-password-input"` | `id="password"` | `type="password"` | `aria-required="true"`
+- **Submit Button:** `data-testid="login-submit-button"` | `type="submit"` | `role="button"`
+- **Form Error Banner:** `data-testid="login-error-message"` | `role="alert"`
+
+---
+
+## 9. Component Styling Guidelines: Sidebar Workspace Selector
+
+This selector resides in the upper Sidebar header, giving cross-functional collaborators a zero-friction way to swap board scopes while upholding tenant isolation policies.
+
+### 9.1 Tenant Guard & Access Control Layout
+- **Strict Limitation:** The dropdown selector must only list workspaces where the active user holds verified membership.
+- **Empty State / No Workspaces:** If a user belongs to zero workspaces, the application must display a "Create your first workspace" placeholder instead of the dropdown selector.
+
+### 9.2 Trigger Button Guidelines
+The active workspace container that opens the context dropdown.
+- **Styling:** `w-full flex items-center justify-between p-2 rounded-md hover:bg-elevated transition-all duration-150 border border-transparent focus:ring-2 focus:ring-accent-primary focus:outline-none cursor-pointer group`.
+- **Contents Layout:**
+  - **Left Section (Workspace Info):** `flex items-center gap-2.5 min-w-0`.
+    - **Workspace Avatar:** `w-6 h-6 rounded-md bg-accent-primary/10 text-accent-primary font-mono text-xs flex items-center justify-center flex-shrink-0 font-semibold select-none`.
+    - **Text Metadata:** `flex flex-col text-left min-w-0`.
+      - **Workspace Name:** `text-sm font-semibold text-primary truncate max-w-[140px]`.
+      - **Organization Label:** `text-[10px] text-secondary uppercase font-semibold tracking-wider`.
+  - **Right Section (Indicator):** Chevron icon (`w-4 h-4 text-secondary ml-1.5 transition-transform duration-150 group-aria-expanded:rotate-180`).
+
+### 9.3 Dropdown Menu Guidelines
+- **Container Structure:** `absolute top-full left-2 mt-1 w-64 bg-surface border border-base rounded-md shadow-lg z-50 py-1.5 flex flex-col gap-0.5 origin-top-left transition-all ease-standard duration-150`.
+  - **Visible State:** `opacity-100 scale-100 pointer-events-auto`.
+  - **Hidden State:** `opacity-0 scale-95 pointer-events-none`.
+- **Search Filter Input:**
+  - Render a text input at the top of the dropdown: `px-2 py-1.5 border-b border-base`.
+  - Input styling: `w-full px-2 py-1 text-xs bg-elevated border border-base rounded focus:outline-none focus:ring-1 focus:ring-accent-primary text-primary`.
+- **Workspace Selector Option Item:**
+  - **Layout:** `w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-elevated transition-colors duration-150 select-none cursor-pointer border-l-2 border-transparent`.
+  - **Selected Option:** `bg-accent-primary/5 font-medium border-l-accent-primary`.
+  - **Option Details:**
+    - **Avatar:** Same as trigger avatar (`w-6 h-6`).
+    - **Label:** `text-sm font-medium text-primary truncate flex-1 min-w-0`.
+    - **Role Badges:** Colored labels based on the member's workspace permission:
+      - `Admin` role badge: `bg-purple-50 text-purple-600 dark:bg-purple-950/30 dark:text-purple-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase`.
+      - `Member` role badge: `bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase`.
+      - `Viewer` role badge: `bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase`.
+
+### 9.4 Context Switching Transitions & Shimmer
+To convey a zero-friction, native feel when loading a new workspace, the frontend must execute the following coordination:
+1. **Board Container Fade:** Upon trigger select, set the main viewport board container to `opacity-40` and `pointer-events-none` with standard transition timing (`duration-300 ease-standard`).
+2. **Top Edge Shimmer Bar:**
+  - Render an active, high-priority loading progress bar at the top edge of the viewport.
+  - Height: `h-[2px]`.
+  - Placement: `absolute top-0 left-0 right-0 z-50`.
+  - Animation: Continuous linear shimmer gradient.
+  - Color styling: `bg-gradient-to-r from-accent-primary via-blue-400 to-accent-primary bg-[length:200%_auto] animate-shimmer-fast`.
+
+### 9.5 Access Control & Selection TDD Constraints
+- **Trigger Button:** `data-testid="workspace-selector-trigger"` | `role="button"` | `aria-haspopup="listbox"` | `aria-expanded="false"` | `aria-controls="workspace-selector-dropdown"`
+- **Dropdown List:** `data-testid="workspace-selector-dropdown"` | `role="listbox"` | `aria-label="Workspace selection"`
+- **Workspace Option:** `data-testid="workspace-option-{workspace_id}"` | `role="option"` | `aria-selected="true/false"`
+- **Role Badge Element:** `data-testid="role-badge-{role}"`
+- **Search Field:** `data-testid="workspace-search-input"`
+- **Switching Shimmer:** `data-testid="workspace-switching-shimmer"`
+
+---
+
+## 10. Custom Keyframe Animations
+
+To enable fluid motion transitions across components, the developer should register the following configurations in the Tailwind CSS file (`tailwind.config.js`):
+
+```javascript
+module.exports = {
+  theme: {
+    extend: {
+      keyframes: {
+        shake: {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-4px)' },
+          '20%, 40%, 60%, 80%': { transform: 'translateX(4px)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '200% 0' },
+          '100%': { backgroundPosition: '-200% 0' },
+        },
+        dropdownEnter: {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(-4px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
+        }
+      },
+      animation: {
+        'shake': 'shake 0.3s cubic-bezier(.36,.07,.19,.97) both',
+        'shimmer-fast': 'shimmer 1.5s linear infinite',
+        'dropdown-enter': 'dropdownEnter 0.15s cubic-bezier(0.2, 0, 0, 1) forwards',
+      }
+    }
+  }
+}
+```
