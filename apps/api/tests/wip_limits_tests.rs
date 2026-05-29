@@ -397,3 +397,201 @@ async fn test_soft_deleted_cards_ignored_by_wip_limit(pool: sqlx::PgPool) -> any
 
     Ok(())
 }
+
+#[sqlx::test]
+async fn test_user_wip_limits_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations").run(&pool).await?;
+
+    // 1. Seed user, workspace, column (active), swimlane
+    let workspace_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Engineering')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
+    let user_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO users (id, email, name) VALUES ($1, 'dev@kanbrio.io', 'Developer')")
+        .bind(user_id)
+        .execute(&pool)
+        .await?;
+
+    sqlx::query("INSERT INTO workspace_members (workspace_id, user_id, role, wip_limit) VALUES ($1, $2, 'member', 2)")
+        .bind(workspace_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await?;
+
+    let active_col: (Uuid,) = sqlx::query_as(
+        "INSERT INTO columns (workspace_id, title, position, is_done) VALUES ($1, 'In Progress', 1, FALSE) RETURNING id"
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    let done_col: (Uuid,) = sqlx::query_as(
+        "INSERT INTO columns (workspace_id, title, position, is_done) VALUES ($1, 'Done', 2, TRUE) RETURNING id"
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    let lane_id: (Uuid,) = sqlx::query_as(
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Standard', 0) RETURNING id"
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    // 2. Create 2 active cards and assign to User
+    let card1 = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 1".to_string(),
+            current_column_id: active_col.0,
+            current_swimlane_id: lane_id.0,
+        },
+    )
+    .await?;
+
+    let card2 = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 2".to_string(),
+            current_column_id: active_col.0,
+            current_swimlane_id: lane_id.0,
+        },
+    )
+    .await?;
+
+    // Assign the first two cards
+    Card::assign_to(
+        &pool,
+        workspace_id,
+        user_id,
+        card1.id,
+        Some(user_id),
+        false,
+        false,
+        None,
+    )
+    .await?;
+    Card::assign_to(
+        &pool,
+        workspace_id,
+        user_id,
+        card2.id,
+        Some(user_id),
+        false,
+        false,
+        None,
+    )
+    .await?;
+
+    // 3. Attempt to assign a 3rd active card (Should FAIL with WipLimitExceeded)
+    let card3 = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Card 3".to_string(),
+            current_column_id: active_col.0,
+            current_swimlane_id: lane_id.0,
+        },
+    )
+    .await?;
+
+    let assignment_err = Card::assign_to(
+        &pool,
+        workspace_id,
+        user_id,
+        card3.id,
+        Some(user_id),
+        false,
+        false,
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(
+        assignment_err,
+        AppError::WipLimitExceeded { ref entity, limit } if entity == "user" && limit == 2
+    ));
+
+    // 4. Assign to a Completed Column card (Should SUCCESS since target is completed)
+    let card_done = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Done Card".to_string(),
+            current_column_id: done_col.0,
+            current_swimlane_id: lane_id.0,
+        },
+    )
+    .await?;
+
+    Card::assign_to(
+        &pool,
+        workspace_id,
+        user_id,
+        card_done.id,
+        Some(user_id),
+        false,
+        false,
+        None,
+    )
+    .await?;
+
+    // 5. Admin override (Should SUCCESS)
+    Card::assign_to(
+        &pool,
+        workspace_id,
+        user_id,
+        card3.id,
+        Some(user_id),
+        true,
+        true,
+        Some("Hotfix override".to_string()),
+    )
+    .await?;
+
+    // Verify User has now 3 active cards assigned due to admin override
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM cards WHERE assigned_user_id = $1 AND current_column_id = $2",
+    )
+    .bind(user_id)
+    .bind(active_col.0)
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(count.0, 3);
+
+    // 6. IDOR boundary isolation verification
+    // Attempting to assign a card using a mismatched workspace_id returns AppError::Forbidden
+    let other_workspace_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Other Workspace')")
+        .bind(other_workspace_id)
+        .execute(&pool)
+        .await?;
+
+    let idor_err = Card::assign_to(
+        &pool,
+        other_workspace_id,
+        user_id,
+        card3.id,
+        Some(user_id),
+        false,
+        false,
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(idor_err, AppError::Forbidden));
+
+    Ok(())
+}

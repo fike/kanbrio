@@ -113,3 +113,137 @@ pub async fn move_card(
 
     Ok(Json(card))
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SetUserWipLimit {
+    pub wip_limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssignCard {
+    pub assignee_id: Option<Uuid>,
+    pub override_limit: Option<bool>,
+    pub override_reason: Option<String>,
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn set_user_wip_limit(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, target_user_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<SetUserWipLimit>,
+) -> Result<axum::http::StatusCode, AppError> {
+    if payload.wip_limit.is_some_and(|limit| limit <= 0) {
+        return Err(AppError::BadRequest(
+            "WIP limit must be greater than zero".into(),
+        ));
+    }
+    // 1. Authenticate caller
+    let cookie_hdr = headers
+        .get(axum::http::header::COOKIE)
+        .ok_or_else(|| AppError::Unauthorized("No cookie found".to_string()))?;
+
+    let cookie_str = cookie_hdr
+        .to_str()
+        .map_err(|_| AppError::Unauthorized("Invalid cookie header".to_string()))?;
+
+    let token = cookie_str
+        .split(';')
+        .find_map(|cookie| {
+            let parts: Vec<&str> = cookie.trim().split('=').collect();
+            if parts.len() == 2 && parts[0] == "__Host-sid" {
+                Some(parts[1].to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| AppError::Unauthorized("No active session".to_string()))?;
+
+    let user =
+        crate::services::session_service::SessionService::validate_session(&pool, &token).await?;
+
+    // 2. Verify caller role
+    let caller_member: (String,) = sqlx::query_as(
+        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| AppError::Forbidden)?;
+
+    if caller_member.0 != "admin" {
+        return Err(AppError::Forbidden);
+    }
+
+    // 3. Update WIP limit
+    sqlx::query(
+        "UPDATE workspace_members SET wip_limit = $1, updated_at = NOW() WHERE workspace_id = $2 AND user_id = $3"
+    )
+    .bind(payload.wip_limit)
+    .bind(workspace_id)
+    .bind(target_user_id)
+    .execute(&pool)
+    .await?;
+
+    Ok(axum::http::StatusCode::OK)
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn assign_card(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<AssignCard>,
+) -> Result<Json<Card>, AppError> {
+    // 1. Authenticate caller
+    let cookie_hdr = headers
+        .get(axum::http::header::COOKIE)
+        .ok_or_else(|| AppError::Unauthorized("No cookie found".to_string()))?;
+
+    let cookie_str = cookie_hdr
+        .to_str()
+        .map_err(|_| AppError::Unauthorized("Invalid cookie header".to_string()))?;
+
+    let token = cookie_str
+        .split(';')
+        .find_map(|cookie| {
+            let parts: Vec<&str> = cookie.trim().split('=').collect();
+            if parts.len() == 2 && parts[0] == "__Host-sid" {
+                Some(parts[1].to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| AppError::Unauthorized("No active session".to_string()))?;
+
+    let user =
+        crate::services::session_service::SessionService::validate_session(&pool, &token).await?;
+
+    // 2. Check caller role
+    let caller_member: (String,) = sqlx::query_as(
+        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| AppError::Forbidden)?;
+
+    let is_admin = caller_member.0 == "admin";
+
+    // 3. Call core assignment logic
+    let card = Card::assign_to(
+        &pool,
+        workspace_id,
+        user.id,
+        card_id,
+        payload.assignee_id,
+        is_admin,
+        payload.override_limit.unwrap_or(false),
+        payload.override_reason,
+    )
+    .await?;
+
+    Ok(Json(card))
+}

@@ -6,11 +6,11 @@ This file contains licensing and attribution notices for direct open-source depe
 
 ## 1. Rust Backend Dependencies (apps/api)
 
-### sqlx, serde, serde_json, uuid, chrono, thiserror, anyhow
+### sqlx, serde, serde_json, uuid, chrono, thiserror, anyhow, argon2, rand, reqwest
 * License: Dual Licensed under MIT or Apache-2.0
 * Copyright (c) the respective project contributors
 
-### axum, tokio, tower-http, tracing, tracing-subscriber, dotenvy, tower, http-body-util
+### axum, tokio, tower-http, tracing, tracing-subscriber, dotenvy, tower, http-body-util, wiremock
 * License: MIT License
 * Copyright (c) the respective project contributors
 
@@ -22,6 +22,10 @@ This file contains licensing and attribution notices for direct open-source depe
 * License: Apache-2.0
 * Copyright (c) Atlassian and contributors
 
-### solid-js, @solidjs/router, @solidjs/testing-library, @tailwindcss/postcss, @types/node, eslint, tailwindcss, vite
+### solid-js, @solidjs/router, @solidjs/testing-library, @tailwindcss/postcss, @types/node, eslint, tailwindcss, vite, @tanstack/solid-query, date-fns
 * License: MIT License
+* Copyright (c) the respective project contributors
+
+### lucide-solid
+* License: ISC License
 * Copyright (c) the respective project contributors
