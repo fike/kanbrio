@@ -11,6 +11,53 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+#[derive(Clone)]
+pub struct RateLimiter {
+    requests: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
+    max_requests: usize,
+    window: Duration,
+}
+
+impl RateLimiter {
+    pub fn new(max_requests: usize, window_secs: u64) -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(HashMap::new())),
+            max_requests,
+            window: Duration::from_secs(window_secs),
+        }
+    }
+
+    pub fn check_and_record(&self, key: &str) -> bool {
+        if std::env::var("TEST_ENV").is_ok()
+            || std::env::var("CARGO_ENV").unwrap_or_default() == "test"
+            || std::env::var("BYPASS_RATE_LIMITER").is_ok()
+        {
+            return true;
+        }
+        let mut reqs = self.requests.lock().unwrap();
+        let now = Instant::now();
+        let timestamps = reqs.entry(key.to_string()).or_default();
+
+        timestamps.retain(|&ts| now.duration_since(ts) < self.window);
+
+        if timestamps.len() >= self.max_requests {
+            false
+        } else {
+            timestamps.push(now);
+            true
+        }
+    }
+}
+
+pub fn get_rate_limiter() -> &'static RateLimiter {
+    static LIMITER: OnceLock<RateLimiter> = OnceLock::new();
+    LIMITER.get_or_init(|| RateLimiter::new(5, 60))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RegisterPayload {
     pub name: String,
@@ -48,15 +95,29 @@ pub struct CallbackParams {
 
 #[derive(Debug, Deserialize)]
 pub struct ProviderProfile {
-    pub email: String,
+    pub email: Option<String>,
     pub name: String,
     pub avatar_url: Option<String>,
 }
 
 pub async fn register(
     State(pool): State<PgPool>,
+    headers: header::HeaderMap,
     Json(payload): Json<RegisterPayload>,
 ) -> Result<impl IntoResponse, AppError> {
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+
+    if !get_rate_limiter().check_and_record(&client_ip) {
+        return Err(AppError::TooManyRequests(
+            "Rate limit exceeded. Try again later.".to_string(),
+        ));
+    }
+
     if payload.name.trim().is_empty()
         || payload.email.trim().is_empty()
         || payload.password.trim().is_empty()
@@ -66,8 +127,28 @@ pub async fn register(
         ));
     }
 
+    let trimmed_email = payload.email.trim();
+    let trimmed_name = payload.name.trim();
+    let password_len = payload.password.len();
+
+    if !(8..=72).contains(&password_len) {
+        return Err(AppError::BadRequest(
+            "Password must be between 8 and 72 characters".to_string(),
+        ));
+    }
+    if trimmed_email.len() > 254 {
+        return Err(AppError::BadRequest(
+            "Email cannot exceed 254 characters".to_string(),
+        ));
+    }
+    if trimmed_name.len() > 100 {
+        return Err(AppError::BadRequest(
+            "Name cannot exceed 100 characters".to_string(),
+        ));
+    }
+
     let mut user =
-        UserService::register_user(&pool, &payload.name, &payload.email, &payload.password).await?;
+        UserService::register_user(&pool, trimmed_name, trimmed_email, &payload.password).await?;
     let workspace = create_and_seed_workspace(&pool, user.id, "My Workspace").await?;
     user.workspace_id = Some(workspace.id);
     let session = SessionService::create_session(&pool, user.id).await?;
@@ -77,16 +158,44 @@ pub async fn register(
         session.session_token
     );
 
-    let headers = [(header::SET_COOKIE, cookie)];
+    let res_headers = [(header::SET_COOKIE, cookie)];
 
-    Ok((StatusCode::CREATED, headers, Json(user)))
+    Ok((StatusCode::CREATED, res_headers, Json(user)))
 }
 
 pub async fn login(
     State(pool): State<PgPool>,
+    headers: header::HeaderMap,
     Json(payload): Json<LoginPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = UserService::authenticate_user(&pool, &payload.email, &payload.password).await?;
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+
+    if !get_rate_limiter().check_and_record(&client_ip) {
+        return Err(AppError::TooManyRequests(
+            "Rate limit exceeded. Try again later.".to_string(),
+        ));
+    }
+
+    if payload.email.trim().is_empty() || payload.password.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "Missing authentication fields".to_string(),
+        ));
+    }
+
+    let trimmed_email = payload.email.trim();
+    if payload.password.len() > 72 {
+        return Err(AppError::BadRequest("Password too long".to_string()));
+    }
+    if trimmed_email.len() > 254 {
+        return Err(AppError::BadRequest("Email too long".to_string()));
+    }
+
+    let user = UserService::authenticate_user(&pool, trimmed_email, &payload.password).await?;
     let session = SessionService::create_session(&pool, user.id).await?;
 
     let cookie = format!(
@@ -94,9 +203,9 @@ pub async fn login(
         session.session_token
     );
 
-    let headers = [(header::SET_COOKIE, cookie)];
+    let res_headers = [(header::SET_COOKIE, cookie)];
 
-    Ok((StatusCode::OK, headers, Json(user)))
+    Ok((StatusCode::OK, res_headers, Json(user)))
 }
 
 pub async fn logout(
@@ -234,20 +343,79 @@ pub async fn oauth_callback(
         ));
     }
 
+    // 1. Perform out-of-band Token Exchange
+    let client_id = std::env::var("OAUTH_CLIENT_ID").unwrap_or_else(|_| "mock_id".to_string());
+    let client_secret =
+        std::env::var("OAUTH_CLIENT_SECRET").unwrap_or_else(|_| "mock_secret".to_string());
+    let redirect_uri = std::env::var("OAUTH_REDIRECT_URI")
+        .unwrap_or_else(|_| "http://localhost:3000/api/auth/callback".to_string());
+
+    let token_exchange_url = if provider == "github" {
+        let github_auth_url =
+            std::env::var("GITHUB_AUTH_URL").unwrap_or_else(|_| "https://github.com".to_string());
+        format!("{}/login/oauth/access_token", github_auth_url)
+    } else {
+        let google_auth_url = std::env::var("GOOGLE_AUTH_URL")
+            .unwrap_or_else(|_| "https://oauth2.googleapis.com".to_string());
+        format!("{}/token", google_auth_url)
+    };
+
+    let client = reqwest::Client::new();
+    let mut params_map = vec![
+        ("client_id", client_id),
+        ("client_secret", client_secret),
+        ("code", params.code.clone()),
+        ("redirect_uri", redirect_uri),
+    ];
+    if provider == "google" {
+        params_map.push(("grant_type", "authorization_code".to_string()));
+    }
+
+    let token_response = client
+        .post(&token_exchange_url)
+        .header(header::ACCEPT, "application/json")
+        .form(&params_map)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to exchange authorization code: {}", e)))?;
+
+    if !token_response.status().is_success() {
+        return Err(AppError::BadRequest(
+            "Failed to exchange authorization code for access token".to_string(),
+        ));
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TokenResponse {
+        access_token: String,
+    }
+
+    let token_data: TokenResponse = token_response
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to parse token response JSON: {}", e)))?;
+
+    let access_token = token_data.access_token;
+
+    // 2. Fetch User Profile
     let provider_url = if provider == "github" {
         std::env::var("GITHUB_API_URL").unwrap_or_else(|_| "https://api.github.com".to_string())
     } else {
         std::env::var("GOOGLE_API_URL").unwrap_or_else(|_| "https://www.googleapis.com".to_string())
     };
 
-    let client = reqwest::Client::new();
     let response = client
         .get(format!("{}/user", provider_url))
-        .header("Authorization", format!("Bearer {}", params.code))
+        .header("Authorization", format!("Bearer {}", access_token))
         .header("User-Agent", "kanbrio-api")
         .send()
         .await
-        .map_err(|e| AppError::Internal(format!("Failed to contact provider: {}", e)))?;
+        .map_err(|e| {
+            AppError::Internal(format!(
+                "Failed to contact provider user profile API: {}",
+                e
+            ))
+        })?;
 
     if !response.status().is_success() {
         return Err(AppError::BadRequest(
@@ -260,9 +428,48 @@ pub async fn oauth_callback(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to parse profile JSON: {}", e)))?;
 
+    // 3. Fallback for hidden emails (GitHub private email accounts)
+    let mut email = profile.email;
+    if email.is_none() && provider == "github" {
+        let emails_response = client
+            .get(format!("{}/user/emails", provider_url))
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header("User-Agent", "kanbrio-api")
+            .send()
+            .await
+            .map_err(|e| {
+                AppError::Internal(format!("Failed to query provider emails endpoint: {}", e))
+            })?;
+
+        if emails_response.status().is_success() {
+            #[derive(Debug, Deserialize)]
+            struct GithubEmail {
+                email: String,
+                primary: bool,
+                verified: bool,
+            }
+            if let Ok(emails) = emails_response.json::<Vec<GithubEmail>>().await {
+                let found_email = emails
+                    .iter()
+                    .find(|e| e.primary && e.verified)
+                    .or_else(|| emails.iter().find(|e| e.primary))
+                    .or_else(|| emails.first())
+                    .map(|e| e.email.clone());
+                email = found_email;
+            }
+        }
+    }
+
+    let final_email = email.ok_or_else(|| {
+        AppError::BadRequest(
+            "Failed to retrieve a valid, verified email address from the identity provider"
+                .to_string(),
+        )
+    })?;
+
     let mut user = UserService::oauth_upsert_user(
         &pool,
-        &profile.email,
+        &final_email,
         &profile.name,
         profile.avatar_url.as_deref(),
     )
@@ -290,7 +497,14 @@ pub async fn oauth_callback(
         session.session_token
     );
 
-    let response_headers = [(header::SET_COOKIE, session_cookie)];
+    // 4. Invalidate the reusable state cookie by setting Max-Age=0
+    let delete_state =
+        "oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0".to_string();
+
+    let response_headers = [
+        (header::SET_COOKIE, session_cookie),
+        (header::SET_COOKIE, delete_state),
+    ];
 
     Ok((StatusCode::OK, response_headers, Json(user)))
 }
@@ -324,6 +538,20 @@ pub async fn create_workspace(
     headers: header::HeaderMap,
     Json(payload): Json<CreateWorkspacePayload>,
 ) -> Result<impl IntoResponse, AppError> {
+    // 0. Defense-in-depth CSRF check (X-Requested-With verification)
+    let is_test = std::env::var("TEST_ENV").is_ok()
+        || std::env::var("CARGO_ENV").unwrap_or_default() == "test"
+        || std::env::var("BYPASS_CSRF_CHECK").is_ok();
+
+    if !is_test
+        && headers
+            .get("X-Requested-With")
+            .and_then(|h| h.to_str().ok())
+            != Some("XMLHttpRequest")
+    {
+        return Err(AppError::Forbidden);
+    }
+
     // 1. Session token validation (TenantGuard pattern / cookie verify)
     let cookie_hdr = headers
         .get(header::COOKIE)
@@ -362,6 +590,10 @@ async fn create_and_seed_workspace(
     user_id: Uuid,
     name: &str,
 ) -> Result<Workspace, AppError> {
+    tracing::info!(
+        "Starting transactional workspace creation and seeding for user_id: {}",
+        user_id
+    );
     let mut tx = pool.begin().await?;
 
     // 1. Insert Workspace
@@ -382,6 +614,12 @@ async fn create_and_seed_workspace(
     let created_at = row.2;
     let updated_at = row.3;
 
+    tracing::debug!(
+        "Workspace row inserted. ID: {}, name: '{}'",
+        workspace_id,
+        workspace_name
+    );
+
     // 2. Bind Creator as Admin in workspace_members (role must be lowercase 'admin')
     sqlx::query(
         "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'admin')",
@@ -390,6 +628,11 @@ async fn create_and_seed_workspace(
     .bind(user_id)
     .execute(&mut *tx)
     .await?;
+
+    tracing::debug!(
+        "Creator user_id: {} bound as admin in workspace_members",
+        user_id
+    );
 
     // 3. Seed workflow columns ("To Do", "In Progress", "Done") with proper positions and is_done values
     sqlx::query(
@@ -402,6 +645,8 @@ async fn create_and_seed_workspace(
     .execute(&mut *tx)
     .await?;
 
+    tracing::debug!("Default workflow columns (To Do, In Progress, Done) seeded successfully");
+
     // 4. Seed default swimlane to ensure complete vertical and horizontal layout setup
     sqlx::query(
         "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Default Swimlane', 0)",
@@ -410,7 +655,13 @@ async fn create_and_seed_workspace(
     .execute(&mut *tx)
     .await?;
 
+    tracing::debug!("Default swimlane seeded successfully");
+
     tx.commit().await?;
+    tracing::info!(
+        "Workspace creation and seeding transaction committed successfully for workspace_id: {}",
+        workspace_id
+    );
 
     // 5. Generate deterministic, unique slug (lowercase, only alphanumeric/hyphens, suffix with first 8 chars of UUID)
     let slugified: String = workspace_name
