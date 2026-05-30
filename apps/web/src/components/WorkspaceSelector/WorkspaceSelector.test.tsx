@@ -130,4 +130,74 @@ describe('WorkspaceSelector', () => {
       expect(document.activeElement).toBe(trigger);
     });
   });
+
+  it('should open modal when clicking create-workspace-button in empty state', async () => {
+    const mockCreateWorkspace = vi.fn();
+    vi.mocked(useAuth).mockReturnValue({
+      currentUser: () => ({ id: 'u1', name: 'John' }),
+      activeWorkspace: () => null,
+      workspaces: () => [],
+      switchWorkspace: mockSwitchWorkspace,
+      createWorkspace: mockCreateWorkspace,
+    } as any);
+
+    render(() => <WorkspaceSelector />);
+
+    const createBtn = screen.getByTestId('create-workspace-button');
+    fireEvent.click(createBtn);
+
+    // Modal should be visible
+    expect(screen.getByTestId('create-workspace-dialog')).toBeInTheDocument();
+
+    // Autofocus input
+    const input = screen.getByTestId('workspace-name-input');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(input);
+    });
+
+    // Modal should close on Cancel click
+    const cancelBtn = screen.getByText('Cancel');
+    fireEvent.click(cancelBtn);
+    expect(screen.queryByTestId('create-workspace-dialog')).not.toBeInTheDocument();
+  });
+
+  it('should validate inputs, display error, and submit modal form successfully', async () => {
+    const mockCreateWorkspace = vi.fn().mockResolvedValue({
+      id: 'w_new',
+      name: 'Startup Corp',
+      slug: 'startup-corp-wnew',
+    });
+    vi.mocked(useAuth).mockReturnValue({
+      currentUser: () => ({ id: 'u1', name: 'John' }),
+      activeWorkspace: () => null,
+      workspaces: () => [],
+      switchWorkspace: mockSwitchWorkspace,
+      createWorkspace: mockCreateWorkspace,
+    } as any);
+
+    render(() => <WorkspaceSelector />);
+
+    fireEvent.click(screen.getByTestId('create-workspace-button'));
+
+    const input = screen.getByTestId('workspace-name-input') as HTMLInputElement;
+    const submitBtn = screen.getByTestId('workspace-modal-submit');
+
+    // 1. empty input validation failure
+    fireEvent.click(submitBtn);
+    expect(screen.getByTestId('workspace-modal-error')).toHaveTextContent('at least 1 non-whitespace character');
+
+    // 2. too long input validation failure
+    fireEvent.input(input, { target: { value: 'a'.repeat(51) } });
+    fireEvent.click(submitBtn);
+    expect(screen.getByTestId('workspace-modal-error')).toHaveTextContent('Maximum allowed length is 50 characters');
+
+    // 3. valid submission
+    fireEvent.input(input, { target: { value: 'Startup Corp' } });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockCreateWorkspace).toHaveBeenCalledWith('Startup Corp');
+      expect(screen.queryByTestId('create-workspace-dialog')).not.toBeInTheDocument();
+    });
+  });
 });

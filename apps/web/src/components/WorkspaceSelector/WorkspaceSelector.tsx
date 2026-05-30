@@ -1,10 +1,19 @@
 import { createSignal, createEffect, Show, For } from 'solid-js';
 import { useAuth } from '../AuthProvider';
+import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
 export function WorkspaceSelector() {
   const auth = useAuth();
   const [isOpen, setIsOpen] = createSignal(false);
   const [search, setSearch] = createSignal('');
+  const [isModalOpen, setIsModalOpen] = createSignal(false);
+  const [triggerElement, setTriggerElement] = createSignal<HTMLButtonElement | undefined>(undefined);
+
+  const openCreateModal = (e: MouseEvent) => {
+    setTriggerElement(e.currentTarget as HTMLButtonElement);
+    setIsModalOpen(true);
+    setIsOpen(false);
+  };
 
   let triggerRef: HTMLButtonElement | undefined;
   let searchInputRef: HTMLInputElement | undefined;
@@ -71,7 +80,8 @@ export function WorkspaceSelector() {
   };
 
   return (
-    <Show
+    <>
+      <Show
       when={auth.workspaces().length > 0}
       fallback={
         <div
@@ -86,6 +96,7 @@ export function WorkspaceSelector() {
           </div>
           <button
             data-testid="create-workspace-button"
+            onClick={openCreateModal}
             class="w-full py-1.5 bg-accent-primary text-white text-xs font-medium rounded hover:bg-accent-primary/95 transition-colors focus:ring-2 focus:ring-accent-primary/30"
           >
             Create Workspace
@@ -200,9 +211,26 @@ export function WorkspaceSelector() {
                 }}
               </For>
             </div>
+
+            <div class="px-2 py-1.5 border-t border-base">
+              <button
+                data-testid="create-workspace-button"
+                onClick={openCreateModal}
+                class="w-full py-1 bg-accent-primary text-white text-xs font-medium rounded hover:bg-accent-primary/95 transition-colors flex items-center justify-center gap-1 focus:outline-none focus:ring-1 focus:ring-accent-primary"
+              >
+                <span>+ Create Workspace</span>
+              </button>
+            </div>
           </div>
         </Show>
       </div>
     </Show>
+
+    <CreateWorkspaceModal
+      isOpen={isModalOpen}
+      onClose={() => setIsModalOpen(false)}
+      triggerRef={triggerElement}
+    />
+    </>
   );
 }
