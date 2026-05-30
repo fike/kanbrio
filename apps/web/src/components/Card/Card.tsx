@@ -1,6 +1,7 @@
-import { type Component, Show, createSignal, onMount } from 'solid-js';
+import { type Component, Show, For, createSignal, onMount } from 'solid-js';
 import { ShieldAlert, Clock, Layers, Shield } from 'lucide-solid';
 import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
+import type { ChecklistItem } from '../../api/board';
 
 export type CardState = 'default' | 'blocked' | 'delayed';
 
@@ -15,9 +16,11 @@ export interface CardProps {
   subtasksCount?: number;
   totalSubtasks?: number;
   assigneeAvatar?: string;
+  checklists?: ChecklistItem[];
   onClick?: () => void;
   onBlock?: (reason: string) => void;
   onUnblock?: () => void;
+  onToggleChecklist?: (checklistId: string) => void;
 }
 
 const Card: Component<CardProps> = (props) => {
@@ -103,6 +106,32 @@ const Card: Component<CardProps> = (props) => {
         <p class="text-xs text-status-blocked font-medium italic mt-1">
           {props.blockerReason}
         </p>
+      </Show>
+
+      {/* Checklist items container */}
+      <Show when={props.checklists && props.checklists.length > 0}>
+        <div data-testid="card-checklist-container" class="mt-2 flex flex-col gap-1.5 border-t border-base/30 pt-2">
+          <For each={props.checklists}>
+            {(item) => (
+              <div data-testid={`checklist-item-${item.id}`} class="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  data-testid={`checklist-checkbox-${item.id}`}
+                  checked={item.is_completed}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    props.onToggleChecklist?.(item.id);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  class="w-3.5 h-3.5 rounded border-base text-accent-primary focus:ring-accent-primary cursor-pointer"
+                />
+                <span classList={{ 'line-through text-tertiary': item.is_completed, 'text-primary': !item.is_completed }}>
+                  {item.title}
+                </span>
+              </div>
+            )}
+          </For>
+        </div>
       </Show>
 
       {/* Footer: Metadata */}

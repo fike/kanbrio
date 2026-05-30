@@ -1,7 +1,7 @@
 use crate::AppError;
 use crate::models::audit::CardTransition;
 use crate::models::board::BoardState;
-use crate::models::card::{Card, MoveCard};
+use crate::models::card::{Card, ChecklistItem, MoveCard};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -43,6 +43,8 @@ pub struct MoveCardPayload {
     pub to_column_id: Uuid,
     pub to_swimlane_id: Uuid,
     pub user_id: Option<Uuid>,
+    pub override_rules: Option<bool>,
+    pub override_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,6 +109,8 @@ pub async fn move_card(
             to_column_id: payload.to_column_id,
             to_swimlane_id: payload.to_swimlane_id,
             user_id: payload.user_id,
+            override_rules: payload.override_rules,
+            override_reason: payload.override_reason,
         },
     )
     .await?;
@@ -246,4 +250,149 @@ pub async fn assign_card(
     .await?;
 
     Ok(Json(card))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateChecklistItemPayload {
+    pub title: String,
+    pub position: i32,
+}
+
+#[tracing::instrument(skip(pool))]
+pub async fn create_checklist_item(
+    State(pool): State<PgPool>,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<CreateChecklistItemPayload>,
+) -> Result<Json<ChecklistItem>, AppError> {
+    // Verify card exists in workspace
+    let card_exists: (bool,) =
+        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)")
+            .bind(card_id)
+            .bind(workspace_id)
+            .fetch_one(&pool)
+            .await?;
+
+    if !card_exists.0 {
+        return Err(AppError::NotFound);
+    }
+
+    let item = sqlx::query_as::<_, ChecklistItem>(
+        r#"
+        INSERT INTO card_checklists (card_id, title, position)
+        VALUES ($1, $2, $3)
+        RETURNING *
+        "#,
+    )
+    .bind(card_id)
+    .bind(payload.title)
+    .bind(payload.position)
+    .fetch_one(&pool)
+    .await?;
+
+    Ok(Json(item))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateChecklistItemPayload {
+    pub title: Option<String>,
+    pub is_completed: Option<bool>,
+    pub position: Option<i32>,
+    pub completed_by: Option<Uuid>,
+}
+
+#[tracing::instrument(skip(pool))]
+pub async fn update_checklist_item(
+    State(pool): State<PgPool>,
+    Path((workspace_id, card_id, checklist_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(payload): Json<UpdateChecklistItemPayload>,
+) -> Result<Json<ChecklistItem>, AppError> {
+    // Verify item belongs to card, and card belongs to workspace
+    let item_exists: (bool,) = sqlx::query_as(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM card_checklists c
+            INNER JOIN cards card ON c.card_id = card.id
+            WHERE c.id = $1 AND c.card_id = $2 AND card.workspace_id = $3
+        )
+        "#,
+    )
+    .bind(checklist_id)
+    .bind(card_id)
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    if !item_exists.0 {
+        return Err(AppError::NotFound);
+    }
+
+    let current_item =
+        sqlx::query_as::<_, ChecklistItem>("SELECT * FROM card_checklists WHERE id = $1")
+            .bind(checklist_id)
+            .fetch_one(&pool)
+            .await?;
+
+    let (is_completed, completed_by, completed_at) = match payload.is_completed {
+        Some(true) => {
+            let by = payload.completed_by.or(current_item.completed_by);
+            let at = Some(chrono::Utc::now());
+            (true, by, at)
+        }
+        Some(false) => (false, None, None),
+        None => (
+            current_item.is_completed,
+            current_item.completed_by,
+            current_item.completed_at,
+        ),
+    };
+
+    let title = payload.title.unwrap_or(current_item.title);
+    let position = payload.position.unwrap_or(current_item.position);
+
+    let updated = sqlx::query_as::<_, ChecklistItem>(
+        r#"
+        UPDATE card_checklists
+        SET title = $1, is_completed = $2, position = $3, completed_by = $4, completed_at = $5, updated_at = NOW()
+        WHERE id = $6
+        RETURNING *
+        "#
+    )
+    .bind(title)
+    .bind(is_completed)
+    .bind(position)
+    .bind(completed_by)
+    .bind(completed_at)
+    .bind(checklist_id)
+    .fetch_one(&pool)
+    .await?;
+
+    Ok(Json(updated))
+}
+
+#[tracing::instrument(skip(pool))]
+pub async fn delete_checklist_item(
+    State(pool): State<PgPool>,
+    Path((workspace_id, card_id, checklist_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<axum::http::StatusCode, AppError> {
+    let deleted = sqlx::query(
+        r#"
+        DELETE FROM card_checklists c
+        USING cards card
+        WHERE c.card_id = card.id
+          AND c.id = $1
+          AND c.card_id = $2
+          AND card.workspace_id = $3
+        "#,
+    )
+    .bind(checklist_id)
+    .bind(card_id)
+    .bind(workspace_id)
+    .execute(&pool)
+    .await?;
+
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }

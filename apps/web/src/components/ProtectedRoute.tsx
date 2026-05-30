@@ -9,10 +9,12 @@ export function ProtectedRoute(props: { children: JSX.Element }) {
   const params = useParams();
 
   createEffect(() => {
+    console.log('[ProtectedRoute Effect] loading:', auth.loading(), 'user:', auth.currentUser(), 'params:', JSON.stringify(params), 'workspaces:', JSON.stringify(auth.workspaces()));
     if (auth.loading()) return;
 
     const user = auth.currentUser();
     if (!user) {
+      console.log('[ProtectedRoute Effect] No user, navigating to /login');
       navigate('/login');
       return;
     }
@@ -21,10 +23,13 @@ export function ProtectedRoute(props: { children: JSX.Element }) {
     if (routeWorkspaceId) {
       const list = auth.workspaces();
       const hasAccess = list.some((w) => w.id === routeWorkspaceId);
+      console.log('[ProtectedRoute Effect] routeWorkspaceId:', routeWorkspaceId, 'hasAccess:', hasAccess);
       if (!hasAccess) {
         if (list.length > 0) {
+          console.log('[ProtectedRoute Effect] No access, redirecting to first workspace:', list[0].id);
           navigate(`/w/${list[0].id}`);
         } else {
+          console.log('[ProtectedRoute Effect] No workspaces, redirecting to /');
           navigate('/');
         }
       }
@@ -32,13 +37,16 @@ export function ProtectedRoute(props: { children: JSX.Element }) {
   });
 
   const shouldRender = () => {
+    console.log('[ProtectedRoute shouldRender] loading:', auth.loading(), 'user:', auth.currentUser() ? 'yes' : 'no', 'params:', JSON.stringify(params), 'workspaces:', JSON.stringify(auth.workspaces()));
     if (auth.loading()) return false;
     if (!auth.currentUser()) return false;
 
     const routeWorkspaceId = params.workspace_id;
     if (routeWorkspaceId) {
       const list = auth.workspaces();
-      return list.some((w) => w.id === routeWorkspaceId);
+      const hasAccess = list.some((w) => w.id === routeWorkspaceId);
+      console.log('[ProtectedRoute shouldRender] routeWorkspaceId:', routeWorkspaceId, 'hasAccess:', hasAccess);
+      return hasAccess;
     }
     return true;
   };

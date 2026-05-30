@@ -29,6 +29,9 @@ pub enum AppError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    #[error("Rule violation: {0}")]
+    RuleViolation(String),
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -65,6 +68,11 @@ impl IntoResponse for AppError {
             ),
             AppError::Unauthorized(ref msg) => (StatusCode::UNAUTHORIZED, msg.clone(), None),
             AppError::BadRequest(ref msg) => (StatusCode::BAD_REQUEST, msg.clone(), None),
+            AppError::RuleViolation(ref msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                msg.clone(),
+                Some("RULE_VIOLATION".to_string()),
+            ),
             AppError::Internal(ref msg) => {
                 tracing::error!("Internal error: {}", msg);
                 (

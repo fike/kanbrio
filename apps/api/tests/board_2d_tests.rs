@@ -76,6 +76,8 @@ async fn test_board_2d_context(pool: sqlx::PgPool) -> anyhow::Result<()> {
             to_column_id: col_doing.id,
             to_swimlane_id: lane_standard.id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await?;

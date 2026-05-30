@@ -6,6 +6,35 @@ const CARD_ID = '550e8400-e29b-41d4-a716-446655440008'; // "Fix Security Leak"
 const CARD_TITLE = 'Fix Security Leak';
 
 test.describe('Transition Auditing E2E', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock authentication endpoints to bypass login redirect
+    await page.route('**/api/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '550e8400-e29b-41d4-a716-446655449999',
+          email: 'admin@test.com',
+          name: 'Admin User',
+          avatar_url: null,
+          workspaces: [
+            { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+          ]
+        })
+      });
+    });
+
+    await page.route('**/api/workspaces', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+        ])
+      });
+    });
+  });
+
   test('should record an audit event when a card is moved via UI', async ({ page, request }) => {
     // 1. Navigate to the board
     await page.goto('/');

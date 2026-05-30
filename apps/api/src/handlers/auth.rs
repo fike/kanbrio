@@ -134,7 +134,7 @@ pub async fn me(
     let user = SessionService::validate_session(&pool, &token).await?;
 
     let workspaces = sqlx::query_as::<_, UserWorkspace>(
-        "SELECT w.id, w.name, wm.role \
+        "SELECT w.id, w.name, INITCAP(wm.role) AS role \
          FROM workspaces w \
          JOIN workspace_members wm ON w.id = wm.workspace_id \
          WHERE wm.user_id = $1",
@@ -150,6 +150,36 @@ pub async fn me(
         avatar_url: user.avatar_url,
         workspaces,
     }))
+}
+
+pub async fn workspaces(
+    State(pool): State<PgPool>,
+    headers: header::HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let cookie_hdr = headers
+        .get(header::COOKIE)
+        .ok_or_else(|| AppError::Unauthorized("No cookie found".to_string()))?;
+
+    let cookie_str = cookie_hdr
+        .to_str()
+        .map_err(|_| AppError::Unauthorized("Invalid cookie header".to_string()))?;
+
+    let token = extract_cookie_value(cookie_str, "__Host-sid")
+        .ok_or_else(|| AppError::Unauthorized("No active session".to_string()))?;
+
+    let user = SessionService::validate_session(&pool, &token).await?;
+
+    let workspaces = sqlx::query_as::<_, UserWorkspace>(
+        "SELECT w.id, w.name, INITCAP(wm.role) AS role \
+         FROM workspaces w \
+         JOIN workspace_members wm ON w.id = wm.workspace_id \
+         WHERE wm.user_id = $1",
+    )
+    .bind(user.id)
+    .fetch_all(&pool)
+    .await?;
+
+    Ok(Json(workspaces))
 }
 
 pub async fn oauth_redirect(Path(provider): Path<String>) -> Result<impl IntoResponse, AppError> {

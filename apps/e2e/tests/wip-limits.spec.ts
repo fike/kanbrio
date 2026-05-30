@@ -4,6 +4,35 @@ const CARD_TITLE_TO_MOVE = 'Implement Drag & Drop'; // In Doing
 const DONE_COLUMN_ID = 'column-zone-Done'; // Has limit 1, and already has 1 card
 
 test.describe('WIP Limits E2E', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock authentication endpoints to bypass login redirect
+    await page.route('**/api/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '550e8400-e29b-41d4-a716-446655449999',
+          email: 'admin@test.com',
+          name: 'Admin User',
+          avatar_url: null,
+          workspaces: [
+            { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+          ]
+        })
+      });
+    });
+
+    await page.route('**/api/workspaces', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+        ])
+      });
+    });
+  });
+
   test('should prevent moving a card into a column at its WIP limit', async ({ page, request }) => {
     await page.goto('/');
 
@@ -11,7 +40,7 @@ test.describe('WIP Limits E2E', () => {
     const targetZone = page.getByTestId(DONE_COLUMN_ID).first();
 
     // Verify initial state: Done is at limit (1/1)
-    const doneHeader = page.locator('h3', { hasText: 'Done' }).locator('..');
+    const doneHeader = page.locator('h3', { hasText: 'Done' }).locator('xpath=../..');
     await expect(doneHeader).toContainText('WIP 1 / 1');
     await expect(doneHeader).toHaveClass(/bg-orange-50/);
 

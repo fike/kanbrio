@@ -3,6 +3,35 @@ import { test, expect } from '@playwright/test';
 const CARD_TITLE = 'Fix Security Leak';
 
 test.describe('Card Lifecycle E2E', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock authentication endpoints to bypass login redirect
+    await page.route('**/api/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '550e8400-e29b-41d4-a716-446655449999',
+          email: 'admin@test.com',
+          name: 'Admin User',
+          avatar_url: null,
+          workspaces: [
+            { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+          ]
+        })
+      });
+    });
+
+    await page.route('**/api/workspaces', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+        ])
+      });
+    });
+  });
+
   test('should block/unblock a card and verify history', async ({ page }) => {
     await page.goto('/');
 

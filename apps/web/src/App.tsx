@@ -1,4 +1,4 @@
-import { type Component, createEffect, Show } from 'solid-js';
+import { type Component, createEffect, Show, type JSX } from 'solid-js';
 import { Route, useNavigate, useParams } from '@solidjs/router';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -10,6 +10,7 @@ import Board from './components/Board/Board';
 export function WorkspaceLayout() {
   const auth = useAuth();
   const params = useParams();
+  console.log('[WorkspaceLayout] Rendered with params:', JSON.stringify(params));
 
   return (
     <ProtectedRoute>
@@ -97,12 +98,16 @@ export function IntelligentRedirect() {
   );
 }
 
-import type { JSX } from 'solid-js';
+import { QueryClient, QueryClientProvider } from '@tanstack/solid-query';
+
+const queryClient = new QueryClient();
 
 const App: Component<{ children?: JSX.Element }> = (props) => {
   return (
     <AuthProvider>
-      {props.children}
+      <QueryClientProvider client={queryClient}>
+        {props.children}
+      </QueryClientProvider>
     </AuthProvider>
   );
 };

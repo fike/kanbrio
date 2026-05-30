@@ -4,6 +4,19 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+pub struct ChecklistItem {
+    pub id: Uuid,
+    pub card_id: Uuid,
+    pub title: String,
+    pub is_completed: bool,
+    pub position: i32,
+    pub completed_by: Option<Uuid>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Card {
     pub id: Uuid,
     pub parent_id: Option<Uuid>,
@@ -44,6 +57,8 @@ pub struct MoveCard {
     pub to_column_id: Uuid,
     pub to_swimlane_id: Uuid,
     pub user_id: Option<Uuid>,
+    pub override_rules: Option<bool>,
+    pub override_reason: Option<String>,
 }
 
 impl Card {
@@ -83,6 +98,50 @@ impl Card {
                 "Target column or swimlane belongs to a different workspace"
             )
             .into());
+        }
+
+        // --- 3.5 Arrival & Departure Rules (Issue #31) ---
+        let mut is_admin = false;
+        if let Some(user_id) = data.user_id {
+            let role_res: Result<(String,), _> = sqlx::query_as(
+                "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+            )
+            .bind(data.workspace_id)
+            .bind(user_id)
+            .fetch_one(&mut *tx)
+            .await;
+            if let Ok(role) = role_res {
+                is_admin = role.0 == "admin";
+            }
+        }
+
+        let is_override = is_admin && data.override_rules.unwrap_or(false);
+
+        // Only enforce if the column has actually changed and override is NOT active
+        if current_card.current_column_id != data.to_column_id && !is_override {
+            // Validate Departure Rules of the source column
+            let departure_rules: Vec<crate::models::board::TransitionRule> = sqlx::query_as(
+                "SELECT * FROM transition_rules WHERE column_id = $1 AND rule_type = 'departure'",
+            )
+            .bind(current_card.current_column_id)
+            .fetch_all(&mut *tx)
+            .await?;
+
+            for rule in departure_rules {
+                Self::evaluate_rule(&mut tx, &current_card, &rule).await?;
+            }
+
+            // Validate Arrival Rules of the target column
+            let arrival_rules: Vec<crate::models::board::TransitionRule> = sqlx::query_as(
+                "SELECT * FROM transition_rules WHERE column_id = $1 AND rule_type = 'arrival'",
+            )
+            .bind(data.to_column_id)
+            .fetch_all(&mut *tx)
+            .await?;
+
+            for rule in arrival_rules {
+                Self::evaluate_rule(&mut tx, &current_card, &rule).await?;
+            }
         }
 
         // 3. WIP Limit Validation (Issue #4)
@@ -214,6 +273,12 @@ impl Card {
         .await?;
 
         // 5. Log transition (Issue #3)
+        let transition_type = if is_override {
+            "move_override".to_string()
+        } else {
+            "move".to_string()
+        };
+
         sqlx::query(
             r#"
             INSERT INTO card_transitions (
@@ -222,11 +287,12 @@ impl Card {
                 from_swimlane_id, to_swimlane_id,
                 payload
             )
-            VALUES ($1, $2, 'move', $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
         )
         .bind(updated_card.id)
         .bind(data.user_id)
+        .bind(transition_type)
         .bind(current_card.current_column_id)
         .bind(updated_card.current_column_id)
         .bind(current_card.current_swimlane_id)
@@ -235,7 +301,9 @@ impl Card {
             "from_column_id": current_card.current_column_id,
             "to_column_id": updated_card.current_column_id,
             "from_swimlane_id": current_card.current_swimlane_id,
-            "to_swimlane_id": updated_card.current_swimlane_id
+            "to_swimlane_id": updated_card.current_swimlane_id,
+            "is_override": is_override,
+            "override_reason": data.override_reason
         }))
         .execute(&mut *tx)
         .await?;
@@ -697,5 +765,54 @@ impl Card {
 
         tx.commit().await?;
         Ok(updated_card)
+    }
+
+    async fn evaluate_rule(
+        conn: &mut sqlx::PgConnection,
+        card: &Card,
+        rule: &crate::models::board::TransitionRule,
+    ) -> Result<(), crate::AppError> {
+        match rule.criteria_type.as_str() {
+            "assignee_required" if card.assigned_user_id.is_none() => {
+                return Err(crate::AppError::RuleViolation(
+                    "Assignee is required".into(),
+                ));
+            }
+            "checklist_completed" => {
+                let uncompleted_count: (i64,) = sqlx::query_as(
+                    "SELECT COUNT(*) FROM card_checklists WHERE card_id = $1 AND is_completed = FALSE"
+                )
+                .bind(card.id)
+                .fetch_one(conn)
+                .await?;
+
+                if uncompleted_count.0 > 0 {
+                    return Err(crate::AppError::RuleViolation(
+                        "All checklist items must be completed".into(),
+                    ));
+                }
+            }
+            "subtasks_completed" => {
+                let active_children: (i64,) = sqlx::query_as(
+                    r#"
+                    SELECT COUNT(*)
+                    FROM cards c
+                    INNER JOIN columns col ON c.current_column_id = col.id
+                    WHERE c.parent_id = $1 AND col.is_done = FALSE AND c.deleted_at IS NULL
+                    "#,
+                )
+                .bind(card.id)
+                .fetch_one(conn)
+                .await?;
+
+                if active_children.0 > 0 {
+                    return Err(crate::AppError::RuleViolation(
+                        "All subtasks must be completed".into(),
+                    ));
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
