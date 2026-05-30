@@ -362,3 +362,233 @@ module.exports = {
   }
 }
 ```
+
+---
+
+## 12. Component Styling Guidelines: Transitions & Blocker Visual Language
+
+This section establishes standard presentation and focus rules for handling card blocker states, interactive details drawers, drag-and-drop actions, and physics-based error rollback alerts.
+
+### 12.1 Card Blocked State (US1)
+Blocked cards utilize high-priority visual identifiers to instantly flag flow stagnation ("Stop the Line" visual prominence) without breaking the alignment of the 2D grid.
+
+#### 12.1.1 Tailwind Markup Structure
+```html
+<div
+  class="relative flex flex-col gap-1 p-3 bg-surface border border-status-blocked bg-status-blocked/5 dark:bg-red-500/5 rounded-md shadow-sm transition-all ease-standard duration-300"
+  data-testid="card-blocked-container-{card_id}"
+  role="group"
+  aria-labelledby="card-title-{card_id}"
+>
+  <!-- Absolute-positioned left-accent red border strip -->
+  <div class="w-1 h-full bg-status-blocked absolute left-0 top-0 rounded-l-md" aria-hidden="true"></div>
+
+  <!-- Parent Breadcrumb (Standard structure) -->
+  <span class="text-[10px] font-semibold text-tertiary uppercase tracking-wider pl-1.5">Initiative / payment-gateway</span>
+
+  <!-- Card Body -->
+  <div class="flex flex-col gap-1 pl-1.5">
+    <!-- Card Title -->
+    <h3 id="card-title-{card_id}" class="text-sm font-medium text-primary line-clamp-2">
+      Integrate Stripe Payment Gateway
+    </h3>
+
+    <!-- Blocker Badge Area (ShieldAlert icon + truncated blocker reason) -->
+    <div
+      class="flex items-center gap-1 mt-0.5 text-xs text-status-blocked font-medium"
+      data-testid="card-blocker-badge-{card_id}"
+      role="status"
+    >
+      <!-- ShieldAlert Icon equivalent -->
+      <svg class="w-3.5 h-3.5 text-status-blocked flex-shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+      <span class="truncate max-w-[200px]" title="Blocked by API Deprecation">Blocked: API Deprecation</span>
+    </div>
+  </div>
+
+  <!-- Footer Metadata & Pulsing Avatar -->
+  <div class="flex items-center justify-between mt-2 pl-1.5">
+    <span class="font-mono text-[10px] text-tertiary">KB-402</span>
+    <div class="relative">
+      <img
+        src="/avatars/assignee.png"
+        alt="Assignee Name"
+        class="w-6 h-6 rounded-full border border-base bg-elevated ring-2 ring-status-blocked/40 animate-pulse"
+        data-testid="card-avatar-blocked-ring-{user_id}"
+      />
+    </div>
+  </div>
+</div>
+```
+
+#### 12.1.2 Semantic & Contrast Requirements
+- **Color tokens:** The red border must map to `border-status-blocked` (`#EF4444`). The background tint uses `bg-status-blocked/5` (opacity 5%) to maintain readable text contrast.
+- **Assignee ring pulse:** An active CSS pulse (`ring-2 ring-status-blocked/40 animate-pulse`) must encompass the avatar.
+- **ARIA attributes:** The container must feature `role="group"` and `aria-labelledby` referencing the card title. The blocker badge must hold `role="status"` to indicate an updated visual state.
+
+---
+
+### 12.2 Blocker Side-Drawer Panel (US2)
+The right-aligned, 400px wide details drawer isolates blocking comments and delivers a high-context mechanism for obstruction resolution.
+
+#### 12.2.1 Backdrop & Container Tokens
+- **Overlay backdrop:** `fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex justify-end transition-all duration-300 ease-standard`.
+- **Drawer container:** `w-full max-w-[400px] h-full bg-surface border-l border-base flex flex-col shadow-2xl relative z-50 transform translate-x-0 transition-transform duration-300 ease-standard`.
+  - **Dark Mode:** `dark:bg-slate-900 dark:border-slate-800`.
+- **Test Anchor:** `data-testid="blocker-detail-drawer"`
+
+#### 12.2.2 Tailwind Markup Structure
+```html
+<!-- Backdrop Overlay -->
+<div
+  class="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex justify-end animate-backdrop-fade-in"
+  role="none"
+>
+  <!-- Drawer Panel Container -->
+  <div
+    class="w-full max-w-[400px] h-full bg-surface dark:bg-slate-900 border-l border-base flex flex-col shadow-2xl relative z-50 animate-modal-pop"
+    data-testid="blocker-detail-drawer"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="blocker-drawer-title"
+    aria-describedby="blocker-drawer-description"
+  >
+    <!-- Drawer Header -->
+    <div class="p-4 border-b border-base flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h2 id="blocker-drawer-title" class="text-base font-semibold text-primary">Blocker Details</h2>
+        <button
+          class="p-1 text-secondary hover:text-primary rounded-md hover:bg-elevated focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all"
+          aria-label="Close blocker drawer"
+        >
+          <!-- Close Icon -->
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <!-- Urgent Status Header Banner -->
+      <div
+        class="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400 p-3 rounded-md flex gap-2.5 items-center text-xs font-medium"
+        data-testid="blocker-drawer-banner"
+      >
+        <svg class="w-4 h-4 flex-shrink-0 animate-pulse text-status-blocked" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+        <span id="blocker-drawer-description">Blocked for 3 days by @coach-guardian</span>
+      </div>
+    </div>
+
+    <!-- Scrollable Drawer Body -->
+    <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      <!-- Blocker Context Description -->
+      <div class="flex flex-col gap-2">
+        <span class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Obstruction Reason</span>
+        <p class="text-sm text-primary bg-elevated/50 dark:bg-slate-800/50 p-3 rounded-md border border-base">
+          API endpoint /v1/checkout is returning 503 Service Unavailable, blocking checkout integration testing.
+        </p>
+      </div>
+
+      <!-- Isolated Comment Thread Section -->
+      <div class="flex flex-col gap-3 flex-1">
+        <span class="text-[10px] font-semibold text-secondary uppercase tracking-wider">Blocker Discussion</span>
+
+        <!-- Compact Comments Thread Container -->
+        <div class="flex flex-col gap-2 flex-1 overflow-y-auto" data-testid="block-comments-container">
+          <!-- Comment Item -->
+          <div class="text-xs p-2.5 bg-surface dark:bg-slate-800/40 border border-base rounded-md flex flex-col gap-1 shadow-sm">
+            <div class="flex justify-between items-center text-secondary font-medium">
+              <span>@api-dev</span>
+              <span>2 hours ago</span>
+            </div>
+            <p class="text-primary leading-relaxed">
+              We found a DB lock contention. Fixing it now; should be ready in an hour.
+            </p>
+          </div>
+          <!-- Divider line between items -->
+          <div class="h-px bg-base w-full my-1"></div>
+        </div>
+
+        <!-- Comment Field -->
+        <div class="flex gap-2 items-end pt-2 border-t border-base">
+          <textarea
+            class="flex-1 px-3 py-1.5 text-xs bg-surface dark:bg-slate-800 border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none placeholder:text-tertiary text-primary resize-none"
+            placeholder="Reply to this blocker..."
+            rows="2"
+          ></textarea>
+          <button class="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary/95 text-white text-xs font-medium rounded-md focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all">
+            Comment
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer Footer Actions -->
+    <div class="p-4 border-t border-base bg-elevated/30 dark:bg-slate-800/20 flex justify-end gap-3">
+      <!-- Resolve Block Button -->
+      <button
+        type="button"
+        class="w-full py-2 bg-status-done hover:bg-green-600 text-white rounded-md text-sm font-semibold focus:ring-2 focus:ring-status-done/50 focus:outline-none transition-all transform active:scale-[0.98]"
+        data-testid="resolve-block-button"
+      >
+        Resolve Block
+      </button>
+    </div>
+  </div>
+</div>
+```
+
+#### 12.2.3 Focus Trapping & Drawer Keyboard Navigation
+- **Focus Trap:** When the drawer mounts, focus must be trapped dynamically. Keyboard tab shifts should loop from the Close button back to the "Resolve Block" button.
+- **Escape Dismissal:** Pressing the `Escape` key must dismiss the active drawer and return focus back to the blocked card badge trigger.
+- **ARIA Landmark:** The drawer panel must declare `role="dialog"`, `aria-modal="true"`, `aria-labelledby="blocker-drawer-title"`, and `aria-describedby="blocker-drawer-description"`.
+
+---
+
+### 12.3 Drag-and-Drop Visual States & Animations (US4)
+Card movement micro-interactions leverage Pragmatic Drag & Drop coordinates. Fluid physics animations replace native drag ghost states.
+
+- **Drag Start (Ghost state):** Applied to the active source card.
+  - Tailwind styles: `opacity-50 rotate-2 scale-105 shadow-2xl transition-all duration-300 ease-standard cursor-grabbing`.
+- **Valid Drop Target Hover:** Highlight cue applied to target columns/swimlanes.
+  - Tailwind styles: `bg-accent-primary/[0.02] border border-dashed border-accent-primary/30 dark:bg-blue-500/[0.01] dark:border-accent-primary/20 transition-all duration-300 ease-standard`.
+- **Spring Snap Animation:** Released elements ease into their new position with spring coordinates.
+  - Timing style: `duration-300 ease-standard`.
+  - Column counter pulse: Upon successful drop, the destination count badge pulses briefly (`animate-pulse` for 600ms).
+
+---
+
+### 12.4 Physics-based Rollback & Policy Violation Feedback (US5)
+If a moved card triggers a backend policy violation (e.g. `409 Conflict` WIP exceeded, or `422 Unprocessable Entity` arrival rule failed), the UI rejects the drop optimistically.
+
+#### 12.4.1 Coordinate Rollback & Shake Animation
+- **Rollback:** The DOM immediately reverts the card position to its origin coordinate.
+- **Horizontal Shake:** The card executes a 300ms horizontal shake animation.
+  - Class styling: `animate-shake` on the card wrapper.
+  - Shake Anchor: `data-testid="card-rollback-shake-{card_id}"`
+
+#### 12.4.2 Floating Rejection Toast (Bottom-Right)
+- **Toast structure:** `fixed bottom-4 right-4 z-50 w-full max-w-sm bg-surface dark:bg-slate-900 border border-base border-l-4 border-l-status-blocked shadow-xl p-4 rounded-md flex items-start gap-3 animate-modal-pop`.
+- **Test Anchor:** `data-testid="rejection-alert-toast"`
+
+```html
+<div
+  class="fixed bottom-4 right-4 z-50 w-full max-w-sm bg-surface dark:bg-slate-900 border border-base border-l-4 border-l-status-blocked shadow-xl p-4 rounded-md flex items-start gap-3 animate-modal-pop"
+  data-testid="rejection-alert-toast"
+  role="alert"
+  aria-live="assertive"
+>
+  <!-- ShieldAlert Icon -->
+  <svg class="w-5 h-5 text-status-blocked flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+  </svg>
+  <div class="flex-1 flex flex-col gap-0.5">
+    <span class="text-sm font-semibold text-primary">Move Rejected</span>
+    <span class="text-xs text-secondary leading-relaxed">[Arrival Rule Violation]: QA requires an Assignee before entry.</span>
+  </div>
+  <button
+    class="text-tertiary hover:text-primary p-0.5 rounded transition-all focus:outline-none focus:ring-1 focus:ring-accent-primary"
+    aria-label="Dismiss message"
+  >
+    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+  </button>
+</div>
+```
