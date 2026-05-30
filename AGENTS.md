@@ -96,6 +96,21 @@ bd close <id>         # Complete work
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
 
+## 🤖 Standard Multi-Agent Collaborative Journey Workflow
+
+Every new feature, user journey improvement, or critical blocker correction in Kanbrio MUST follow a structured, multi-agent collaborative cycle coordinated by the `@ooda-orchestrator` subagent. This process ensures high product quality, complete visual alignment, and rigorous test coverage before any technical code is written.
+
+This lifecycle is divided into **4 Core OODA Phases**:
+*   **Phase 1: Onboarding & Feature Strategy Discovery (`@product-manager`)** - Establishes strategic discovery, user stories (JTBD), and issue backlog registration via Beads (`bd`).
+*   **Phase 2: Visual & Focus Design (`@ux-designer`)** - Details the visual flow, system states (loading, error, empty), and a11y focus bounds in `DESIGN.md`.
+*   **Phase 3: Mini-PRD & Technical Specifications (`@product-manager`)** - Maps visual specs to REST/WS API contracts and strict Acceptance Criteria in a Mini-PRD.
+*   **Phase 4: Test-Driven Engineering & AI Audits (`@developer`)** - Executes TDD implementation and clears mandatory quality audits (Security, SRE, and Compliance).
+
+> [!IMPORTANT]
+> The full, comprehensive procedural checklists, templates, and delivery guidelines for each phase are documented in the **`agentic-workflow` skill** located at [SKILL.md](file:///Users/fernandoike/projects/pets/kanbrio/.agents/skills/agentic-workflow/SKILL.md). All agents executing development or orchestration are required to activate and consult this skill.
+
+---
+
 ## 🔗 Pull Request & GitHub Issue Integration Standards
 
 Whenever creating or editing a Pull Request (PR) on GitHub, agents MUST ensure complete trace link association:
