@@ -3,7 +3,16 @@ import { test, expect } from '@playwright/test';
 const CARD_TITLE = 'Fix Security Leak';
 
 test.describe('Card Lifecycle E2E', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
+    // Set authenticated session cookie for real backend requests
+    await context.addCookies([{
+      name: '__Host-sid',
+      value: 'e2e-session-token-for-testing-123456',
+      domain: 'localhost',
+      path: '/',
+      secure: true
+    }]);
+
     // Mock authentication endpoints to bypass login redirect
     await page.route('**/api/auth/me', async (route) => {
       await route.fulfill({

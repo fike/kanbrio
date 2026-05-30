@@ -38,3 +38,13 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO workspace_members (workspace_id, user_id, role, joined_at, created_at, updated_at)
 VALUES ('550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655449999', 'admin', NOW(), NOW(), NOW())
 ON CONFLICT (workspace_id, user_id) DO NOTHING;
+
+-- 7. Seed a default session for E2E testing
+INSERT INTO user_sessions (id, user_id, session_token, expires_at)
+VALUES (
+  '550e8400-e29b-41d4-a716-446655448888',
+  '550e8400-e29b-41d4-a716-446655449999',
+  'e2e-session-token-for-testing-123456',
+  NOW() + INTERVAL '1 day'
+)
+ON CONFLICT (id) DO UPDATE SET expires_at = EXCLUDED.expires_at;

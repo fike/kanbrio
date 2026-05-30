@@ -6,7 +6,16 @@ const CARD_ID = '550e8400-e29b-41d4-a716-446655440008'; // "Fix Security Leak"
 const CARD_TITLE = 'Fix Security Leak';
 
 test.describe('Transition Auditing E2E', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
+    // Set authenticated session cookie for real backend requests
+    await context.addCookies([{
+      name: '__Host-sid',
+      value: 'e2e-session-token-for-testing-123456',
+      domain: 'localhost',
+      path: '/',
+      secure: true
+    }]);
+
     // Mock authentication endpoints to bypass login redirect
     await page.route('**/api/auth/me', async (route) => {
       await route.fulfill({
@@ -50,13 +59,21 @@ test.describe('Transition Auditing E2E', () => {
 
     // 4. Verify Audit Trail via API using polling to avoid race conditions
     await expect.poll(async () => {
-      const response = await request.get(`${API_BASE}/api/workspaces/${WORKSPACE_ID}/cards/${CARD_ID}/history`);
+      const response = await request.get(`${API_BASE}/api/workspaces/${WORKSPACE_ID}/cards/${CARD_ID}/history`, {
+        headers: {
+          'Cookie': '__Host-sid=e2e-session-token-for-testing-123456'
+        }
+      });
       if (!response.ok()) return null;
       const history = await response.json();
       return history[0]?.transition_type;
     }).toBe('move');
 
-    const finalResponse = await request.get(`${API_BASE}/api/workspaces/${WORKSPACE_ID}/cards/${CARD_ID}/history`);
+    const finalResponse = await request.get(`${API_BASE}/api/workspaces/${WORKSPACE_ID}/cards/${CARD_ID}/history`, {
+      headers: {
+        'Cookie': '__Host-sid=e2e-session-token-for-testing-123456'
+      }
+    });
     const history = await finalResponse.json();
     const latestEvent = history[0];
 

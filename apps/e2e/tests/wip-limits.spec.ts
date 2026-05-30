@@ -4,7 +4,16 @@ const CARD_TITLE_TO_MOVE = 'Implement Drag & Drop'; // In Doing
 const DONE_COLUMN_ID = 'column-zone-Done'; // Has limit 1, and already has 1 card
 
 test.describe('WIP Limits E2E', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
+    // Set authenticated session cookie for real backend requests
+    await context.addCookies([{
+      name: '__Host-sid',
+      value: 'e2e-session-token-for-testing-123456',
+      domain: 'localhost',
+      path: '/',
+      secure: true
+    }]);
+
     // Mock authentication endpoints to bypass login redirect
     await page.route('**/api/auth/me', async (route) => {
       await route.fulfill({

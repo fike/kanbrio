@@ -29,3 +29,6 @@ CREATE TABLE IF NOT EXISTS transition_rules (
 
 -- Index to optimize rule lookups for a specific column and rule type
 CREATE INDEX IF NOT EXISTS idx_transition_rules_column_rules ON transition_rules(column_id, rule_type);
+
+-- Index to optimize rule lookups by workspace
+CREATE INDEX IF NOT EXISTS idx_transition_rules_workspace_id ON transition_rules(workspace_id);

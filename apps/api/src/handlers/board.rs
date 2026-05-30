@@ -16,33 +16,10 @@ pub struct Pagination {
     pub offset: Option<i64>,
 }
 
-#[tracing::instrument(skip(pool))]
-pub async fn get_card_history(
-    State(pool): State<PgPool>,
-    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
-    Query(pagination): Query<Pagination>,
-) -> Result<Json<Vec<CardTransition>>, AppError> {
-    let limit = pagination.limit.unwrap_or(50).min(100);
-    let offset = pagination.offset.unwrap_or(0);
-
-    let history = CardTransition::get_history(&pool, card_id, workspace_id, limit, offset).await?;
-    Ok(Json(history))
-}
-
-#[tracing::instrument(skip(pool))]
-pub async fn get_board_state(
-    State(pool): State<PgPool>,
-    Path(workspace_id): Path<Uuid>,
-) -> Result<Json<BoardState>, AppError> {
-    let state = BoardState::get_state(&pool, workspace_id).await?;
-    Ok(Json(state))
-}
-
 #[derive(Debug, Deserialize)]
 pub struct MoveCardPayload {
     pub to_column_id: Uuid,
     pub to_swimlane_id: Uuid,
-    pub user_id: Option<Uuid>,
     pub override_rules: Option<bool>,
     pub override_reason: Option<String>,
 }
@@ -50,72 +27,6 @@ pub struct MoveCardPayload {
 #[derive(Debug, Deserialize)]
 pub struct BlockCardPayload {
     pub reason: String,
-}
-
-#[tracing::instrument(skip(pool))]
-pub async fn block_card(
-    State(pool): State<PgPool>,
-    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<BlockCardPayload>,
-) -> Result<Json<Card>, AppError> {
-    // 1. Fetch card with workspace isolation
-    let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
-        .bind(card_id)
-        .bind(workspace_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound,
-            _ => AppError::Database(e),
-        })?;
-
-    // 2. Perform block
-    let updated = card.block(&pool, payload.reason).await?;
-    Ok(Json(updated))
-}
-
-#[tracing::instrument(skip(pool))]
-pub async fn unblock_card(
-    State(pool): State<PgPool>,
-    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<Card>, AppError> {
-    // 1. Fetch card with workspace isolation
-    let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
-        .bind(card_id)
-        .bind(workspace_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound,
-            _ => AppError::Database(e),
-        })?;
-
-    // 2. Perform unblock
-    let updated = card.unblock(&pool).await?;
-    Ok(Json(updated))
-}
-
-#[tracing::instrument(skip(pool))]
-pub async fn move_card(
-    State(pool): State<PgPool>,
-    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<MoveCardPayload>,
-) -> Result<Json<Card>, AppError> {
-    let card = Card::move_to(
-        &pool,
-        MoveCard {
-            card_id,
-            workspace_id,
-            to_column_id: payload.to_column_id,
-            to_swimlane_id: payload.to_swimlane_id,
-            user_id: payload.user_id,
-            override_rules: payload.override_rules,
-            override_reason: payload.override_reason,
-        },
-    )
-    .await?;
-
-    Ok(Json(card))
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,19 +41,25 @@ pub struct AssignCard {
     pub override_reason: Option<String>,
 }
 
-#[tracing::instrument(skip(pool, headers))]
-pub async fn set_user_wip_limit(
-    State(pool): State<PgPool>,
-    headers: axum::http::header::HeaderMap,
-    Path((workspace_id, target_user_id)): Path<(Uuid, Uuid)>,
-    Json(payload): Json<SetUserWipLimit>,
-) -> Result<axum::http::StatusCode, AppError> {
-    if payload.wip_limit.is_some_and(|limit| limit <= 0) {
-        return Err(AppError::BadRequest(
-            "WIP limit must be greater than zero".into(),
-        ));
-    }
-    // 1. Authenticate caller
+#[derive(Debug, Deserialize)]
+pub struct CreateChecklistItemPayload {
+    pub title: String,
+    pub position: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateChecklistItemPayload {
+    pub title: Option<String>,
+    pub is_completed: Option<bool>,
+    pub position: Option<i32>,
+    pub completed_by: Option<Uuid>,
+}
+
+async fn authenticate_member(
+    pool: &PgPool,
+    headers: &axum::http::header::HeaderMap,
+    workspace_id: Uuid,
+) -> Result<(crate::models::user::User, String), AppError> {
     let cookie_hdr = headers
         .get(axum::http::header::COOKIE)
         .ok_or_else(|| AppError::Unauthorized("No cookie found".to_string()))?;
@@ -164,23 +81,148 @@ pub async fn set_user_wip_limit(
         .ok_or_else(|| AppError::Unauthorized("No active session".to_string()))?;
 
     let user =
-        crate::services::session_service::SessionService::validate_session(&pool, &token).await?;
+        crate::services::session_service::SessionService::validate_session(pool, &token).await?;
 
-    // 2. Verify caller role
-    let caller_member: (String,) = sqlx::query_as(
+    let member: (String,) = sqlx::query_as(
         "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
     )
     .bind(workspace_id)
     .bind(user.id)
-    .fetch_one(&pool)
+    .fetch_one(pool)
     .await
     .map_err(|_| AppError::Forbidden)?;
 
-    if caller_member.0 != "admin" {
+    Ok((user, member.0))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn get_card_history(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+    Query(pagination): Query<Pagination>,
+) -> Result<Json<Vec<CardTransition>>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    let limit = pagination.limit.unwrap_or(50).min(100);
+    let offset = pagination.offset.unwrap_or(0);
+
+    let history = CardTransition::get_history(&pool, card_id, workspace_id, limit, offset).await?;
+    Ok(Json(history))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn get_board_state(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path(workspace_id): Path<Uuid>,
+) -> Result<Json<BoardState>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    let state = BoardState::get_state(&pool, workspace_id).await?;
+    Ok(Json(state))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn block_card(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<BlockCardPayload>,
+) -> Result<Json<Card>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    // 1. Fetch card with workspace isolation
+    let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
+        .bind(card_id)
+        .bind(workspace_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => AppError::NotFound,
+            _ => AppError::Database(e),
+        })?;
+
+    // 2. Perform block
+    let updated = card.block(&pool, payload.reason).await?;
+    Ok(Json(updated))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn unblock_card(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Card>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    // 1. Fetch card with workspace isolation
+    let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
+        .bind(card_id)
+        .bind(workspace_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => AppError::NotFound,
+            _ => AppError::Database(e),
+        })?;
+
+    // 2. Perform unblock
+    let updated = card.unblock(&pool).await?;
+    Ok(Json(updated))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn move_card(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<MoveCardPayload>,
+) -> Result<Json<Card>, AppError> {
+    let (user, role) = authenticate_member(&pool, &headers, workspace_id).await?;
+    let is_admin = role == "admin";
+
+    if payload.override_rules.unwrap_or(false) && !is_admin {
         return Err(AppError::Forbidden);
     }
 
-    // 3. Update WIP limit
+    let card = Card::move_to(
+        &pool,
+        MoveCard {
+            card_id,
+            workspace_id,
+            to_column_id: payload.to_column_id,
+            to_swimlane_id: payload.to_swimlane_id,
+            user_id: Some(user.id),
+            override_rules: payload.override_rules,
+            override_reason: payload.override_reason,
+        },
+    )
+    .await?;
+
+    Ok(Json(card))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn set_user_wip_limit(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, target_user_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<SetUserWipLimit>,
+) -> Result<axum::http::StatusCode, AppError> {
+    if payload.wip_limit.is_some_and(|limit| limit <= 0) {
+        return Err(AppError::BadRequest(
+            "WIP limit must be greater than zero".into(),
+        ));
+    }
+
+    let (_, role) = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    if role != "admin" {
+        return Err(AppError::Forbidden);
+    }
+
+    // Update WIP limit
     sqlx::query(
         "UPDATE workspace_members SET wip_limit = $1, updated_at = NOW() WHERE workspace_id = $2 AND user_id = $3"
     )
@@ -200,43 +242,10 @@ pub async fn assign_card(
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<AssignCard>,
 ) -> Result<Json<Card>, AppError> {
-    // 1. Authenticate caller
-    let cookie_hdr = headers
-        .get(axum::http::header::COOKIE)
-        .ok_or_else(|| AppError::Unauthorized("No cookie found".to_string()))?;
+    let (user, role) = authenticate_member(&pool, &headers, workspace_id).await?;
+    let is_admin = role == "admin";
 
-    let cookie_str = cookie_hdr
-        .to_str()
-        .map_err(|_| AppError::Unauthorized("Invalid cookie header".to_string()))?;
-
-    let token = cookie_str
-        .split(';')
-        .find_map(|cookie| {
-            let parts: Vec<&str> = cookie.trim().split('=').collect();
-            if parts.len() == 2 && parts[0] == "__Host-sid" {
-                Some(parts[1].to_string())
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| AppError::Unauthorized("No active session".to_string()))?;
-
-    let user =
-        crate::services::session_service::SessionService::validate_session(&pool, &token).await?;
-
-    // 2. Check caller role
-    let caller_member: (String,) = sqlx::query_as(
-        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-    )
-    .bind(workspace_id)
-    .bind(user.id)
-    .fetch_one(&pool)
-    .await
-    .map_err(|_| AppError::Forbidden)?;
-
-    let is_admin = caller_member.0 == "admin";
-
-    // 3. Call core assignment logic
+    // Call core assignment logic
     let card = Card::assign_to(
         &pool,
         workspace_id,
@@ -252,18 +261,15 @@ pub async fn assign_card(
     Ok(Json(card))
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateChecklistItemPayload {
-    pub title: String,
-    pub position: i32,
-}
-
-#[tracing::instrument(skip(pool))]
+#[tracing::instrument(skip(pool, headers))]
 pub async fn create_checklist_item(
     State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<CreateChecklistItemPayload>,
 ) -> Result<Json<ChecklistItem>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
     // Verify card exists in workspace
     let card_exists: (bool,) =
         sqlx::query_as("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)")
@@ -292,20 +298,15 @@ pub async fn create_checklist_item(
     Ok(Json(item))
 }
 
-#[derive(Debug, Deserialize)]
-pub struct UpdateChecklistItemPayload {
-    pub title: Option<String>,
-    pub is_completed: Option<bool>,
-    pub position: Option<i32>,
-    pub completed_by: Option<Uuid>,
-}
-
-#[tracing::instrument(skip(pool))]
+#[tracing::instrument(skip(pool, headers))]
 pub async fn update_checklist_item(
     State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id, checklist_id)): Path<(Uuid, Uuid, Uuid)>,
     Json(payload): Json<UpdateChecklistItemPayload>,
 ) -> Result<Json<ChecklistItem>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
     // Verify item belongs to card, and card belongs to workspace
     let item_exists: (bool,) = sqlx::query_as(
         r#"
@@ -369,11 +370,14 @@ pub async fn update_checklist_item(
     Ok(Json(updated))
 }
 
-#[tracing::instrument(skip(pool))]
+#[tracing::instrument(skip(pool, headers))]
 pub async fn delete_checklist_item(
     State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id, checklist_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<axum::http::StatusCode, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
     let deleted = sqlx::query(
         r#"
         DELETE FROM card_checklists c

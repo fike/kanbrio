@@ -145,14 +145,20 @@ impl Card {
         }
 
         // 3. WIP Limit Validation (Issue #4)
-        // Security/SRE: Lock the column to prevent race conditions during WIP count
-        let wip_limit: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+        // Security/SRE: Lock the column conditionally to prevent race conditions during WIP count
+        let wip_limit_check: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1")
                 .bind(data.to_column_id)
                 .fetch_one(&mut *tx)
                 .await?;
 
-        if let Some(limit) = wip_limit.0 {
+        if let Some(limit) = wip_limit_check.0 {
+            let _wip_limit: (Option<i32>,) =
+                sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+                    .bind(data.to_column_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
             // Only enforce if moving from a different column
             if current_card.current_column_id != data.to_column_id {
                 let current_count: (i64,) =
@@ -177,13 +183,19 @@ impl Card {
             }
         }
 
-        let swimlane_wip_limit: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
+        let swimlane_wip_limit_check: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1")
                 .bind(data.to_swimlane_id)
                 .fetch_one(&mut *tx)
                 .await?;
 
-        if let Some(limit) = swimlane_wip_limit.0 {
+        if let Some(limit) = swimlane_wip_limit_check.0 {
+            let _swimlane_wip_limit: (Option<i32>,) =
+                sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
+                    .bind(data.to_swimlane_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
             // Only enforce if moving from a different swimlane
             if current_card.current_swimlane_id != data.to_swimlane_id {
                 let current_count: (i64,) =
@@ -335,14 +347,20 @@ impl Card {
         }
 
         // 2. WIP Limit Validation (Issue #4)
-        // Lock the column to prevent race conditions
-        let wip_limit: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+        // Lock the column conditionally to prevent race conditions
+        let wip_limit_check: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1")
                 .bind(data.current_column_id)
                 .fetch_one(&mut *tx)
                 .await?;
 
-        if let Some(limit) = wip_limit.0 {
+        if let Some(limit) = wip_limit_check.0 {
+            let _wip_limit: (Option<i32>,) =
+                sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
+                    .bind(data.current_column_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
             let current_count: (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL",
             )
@@ -364,13 +382,19 @@ impl Card {
             }
         }
 
-        let swimlane_wip_limit: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
+        let swimlane_wip_limit_check: (Option<i32>,) =
+            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1")
                 .bind(data.current_swimlane_id)
                 .fetch_one(&mut *tx)
                 .await?;
 
-        if let Some(limit) = swimlane_wip_limit.0 {
+        if let Some(limit) = swimlane_wip_limit_check.0 {
+            let _swimlane_wip_limit: (Option<i32>,) =
+                sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
+                    .bind(data.current_swimlane_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
             let current_count: (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL",
             )
@@ -774,6 +798,13 @@ impl Card {
     ) -> Result<(), crate::AppError> {
         match rule.criteria_type.as_str() {
             "assignee_required" if card.assigned_user_id.is_none() => {
+                tracing::warn!(
+                    card_id = ?card.id,
+                    workspace_id = ?card.workspace_id,
+                    column_id = ?rule.column_id,
+                    criteria_type = ?rule.criteria_type,
+                    "Transition rule violation: Assignee is required"
+                );
                 return Err(crate::AppError::RuleViolation(
                     "Assignee is required".into(),
                 ));
@@ -787,6 +818,14 @@ impl Card {
                 .await?;
 
                 if uncompleted_count.0 > 0 {
+                    tracing::warn!(
+                        card_id = ?card.id,
+                        workspace_id = ?card.workspace_id,
+                        column_id = ?rule.column_id,
+                        criteria_type = ?rule.criteria_type,
+                        uncompleted_checklist_count = uncompleted_count.0,
+                        "Transition rule violation: Uncompleted checklist items"
+                    );
                     return Err(crate::AppError::RuleViolation(
                         "All checklist items must be completed".into(),
                     ));
@@ -806,6 +845,14 @@ impl Card {
                 .await?;
 
                 if active_children.0 > 0 {
+                    tracing::warn!(
+                        card_id = ?card.id,
+                        workspace_id = ?card.workspace_id,
+                        column_id = ?rule.column_id,
+                        criteria_type = ?rule.criteria_type,
+                        active_subtasks_count = active_children.0,
+                        "Transition rule violation: Active subtasks remaining"
+                    );
                     return Err(crate::AppError::RuleViolation(
                         "All subtasks must be completed".into(),
                     ));
