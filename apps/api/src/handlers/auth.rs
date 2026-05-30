@@ -66,8 +66,10 @@ pub async fn register(
         ));
     }
 
-    let user =
+    let mut user =
         UserService::register_user(&pool, &payload.name, &payload.email, &payload.password).await?;
+    let workspace = create_and_seed_workspace(&pool, user.id, "My Workspace").await?;
+    user.workspace_id = Some(workspace.id);
     let session = SessionService::create_session(&pool, user.id).await?;
 
     let cookie = format!(
@@ -258,13 +260,29 @@ pub async fn oauth_callback(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to parse profile JSON: {}", e)))?;
 
-    let user = UserService::oauth_upsert_user(
+    let mut user = UserService::oauth_upsert_user(
         &pool,
         &profile.email,
         &profile.name,
         profile.avatar_url.as_deref(),
     )
     .await?;
+
+    let existing_workspace = sqlx::query_scalar::<_, Uuid>(
+        "SELECT workspace_id FROM workspace_members WHERE user_id = $1 LIMIT 1",
+    )
+    .bind(user.id)
+    .fetch_optional(&pool)
+    .await?;
+
+    let workspace_id = match existing_workspace {
+        Some(ws_id) => ws_id,
+        None => {
+            let workspace = create_and_seed_workspace(&pool, user.id, "My Workspace").await?;
+            workspace.id
+        }
+    };
+    user.workspace_id = Some(workspace_id);
 
     let session = SessionService::create_session(&pool, user.id).await?;
     let session_cookie = format!(
@@ -285,4 +303,137 @@ fn extract_cookie_value(cookie_str: &str, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateWorkspacePayload {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Workspace {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn create_workspace(
+    State(pool): State<PgPool>,
+    headers: header::HeaderMap,
+    Json(payload): Json<CreateWorkspacePayload>,
+) -> Result<impl IntoResponse, AppError> {
+    // 1. Session token validation (TenantGuard pattern / cookie verify)
+    let cookie_hdr = headers
+        .get(header::COOKIE)
+        .ok_or_else(|| AppError::Unauthorized("No cookie found".to_string()))?;
+
+    let cookie_str = cookie_hdr
+        .to_str()
+        .map_err(|_| AppError::Unauthorized("Invalid cookie header".to_string()))?;
+
+    let token = extract_cookie_value(cookie_str, "__Host-sid")
+        .ok_or_else(|| AppError::Unauthorized("No active session".to_string()))?;
+
+    let user = SessionService::validate_session(&pool, &token).await?;
+
+    // 2. Validate bounds (1-50 characters after trimming)
+    let trimmed_name = payload.name.trim();
+    if trimmed_name.is_empty() {
+        return Err(AppError::BadRequest(
+            "Workspace name cannot be empty".to_string(),
+        ));
+    }
+    if trimmed_name.chars().count() > 50 {
+        return Err(AppError::BadRequest(
+            "Workspace name cannot exceed 50 characters".to_string(),
+        ));
+    }
+
+    // 3. Create and seed workspace
+    let workspace = create_and_seed_workspace(&pool, user.id, trimmed_name).await?;
+
+    Ok((StatusCode::CREATED, Json(workspace)))
+}
+
+async fn create_and_seed_workspace(
+    pool: &PgPool,
+    user_id: Uuid,
+    name: &str,
+) -> Result<Workspace, AppError> {
+    let mut tx = pool.begin().await?;
+
+    // 1. Insert Workspace
+    let row: (
+        Uuid,
+        String,
+        chrono::DateTime<chrono::Utc>,
+        chrono::DateTime<chrono::Utc>,
+    ) = sqlx::query_as(
+        "INSERT INTO workspaces (name) VALUES ($1) RETURNING id, name, created_at, updated_at",
+    )
+    .bind(name)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let workspace_id = row.0;
+    let workspace_name = row.1;
+    let created_at = row.2;
+    let updated_at = row.3;
+
+    // 2. Bind Creator as Admin in workspace_members (role must be lowercase 'admin')
+    sqlx::query(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'admin')",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 3. Seed workflow columns ("To Do", "In Progress", "Done") with proper positions and is_done values
+    sqlx::query(
+        "INSERT INTO columns (workspace_id, title, position, is_done) VALUES \
+         ($1, 'To Do', 1, false), \
+         ($1, 'In Progress', 2, false), \
+         ($1, 'Done', 3, true)",
+    )
+    .bind(workspace_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 4. Seed default swimlane to ensure complete vertical and horizontal layout setup
+    sqlx::query(
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Default Swimlane', 0)",
+    )
+    .bind(workspace_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    // 5. Generate deterministic, unique slug (lowercase, only alphanumeric/hyphens, suffix with first 8 chars of UUID)
+    let slugified: String = workspace_name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<&str>>()
+        .join("-");
+    let suffix = &workspace_id.to_string()[..8];
+    let slug = if slugified.is_empty() {
+        suffix.to_string()
+    } else {
+        format!("{}-{}", slugified, suffix)
+    };
+
+    Ok(Workspace {
+        id: workspace_id,
+        name: workspace_name,
+        slug,
+        created_at,
+        updated_at,
+    })
 }

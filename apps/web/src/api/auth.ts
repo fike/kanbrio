@@ -112,3 +112,37 @@ export const logout = async (): Promise<void> => {
     throw new Error('Failed to logout');
   }
 };
+
+export interface CreatedWorkspace {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const createWorkspace = async (name: string): Promise<CreatedWorkspace> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: JSON.stringify({ name }),
+    credentials: 'include',
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to create workspace';
+    try {
+      const errData = await response.json();
+      errorMessage = errData.error || errorMessage;
+    } catch {
+      // ignore
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json();
+};

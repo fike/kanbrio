@@ -250,7 +250,77 @@ To convey a zero-friction, native feel when loading a new workspace, the fronten
 
 ---
 
-## 10. Custom Keyframe Animations
+## 10. Component Styling Guidelines: Workspace Creation Dialog
+
+This component provides a manual workspace creation flow, serving as both an empty-state recovery dialog and a reusable creation modal triggered from the Workspace Selector dropdown. It conforms to dense, sober, enterprise-grade UX constraints and strict keyboard-driven accessibility (a11y) guardrails.
+
+### 10.1 Structural Layout & Visual Tokens
+- **Backdrop Overlay Container:**
+  - Standard Backdrop: `fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center p-4 transition-all duration-300 ease-standard`.
+  - Animation: Fades in via `animate-backdrop-fade-in`.
+- **Modal Dialog Card:**
+  - Placement: Centered in the viewport.
+  - Structure: `w-full max-w-[440px] p-6 bg-surface border border-base rounded-lg shadow-xl flex flex-col gap-5 relative z-50 transition-all duration-300 ease-standard`.
+  - Dark Mode: `dark:bg-slate-900 dark:border-slate-800 dark:shadow-2xl`.
+  - Animation: Pop scale-up via `animate-modal-pop`.
+  - Error state animation: On network/validation failure, the card triggers a horizontal wiggle wobble via `animate-shake`.
+
+### 10.2 Component Typography & Content Elements
+- **Header Section:**
+  - Title: `text-lg font-semibold tracking-tight text-primary` (`h2` hierarchy).
+  - Subtitle / Description: `text-xs text-secondary leading-normal`.
+- **Form Layout:** `<form>` styled as `flex flex-col gap-4`.
+- **Form Input Group:**
+  - Label: `text-xs font-semibold text-secondary tracking-wide uppercase select-none`. MUST contain an explicit `for` attribute referencing the input element's `id`.
+  - Input Field: `w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all placeholder:text-tertiary text-primary`.
+  - Input Helper Text / Field Error: `text-xs font-medium text-status-blocked mt-1`.
+- **Footer Actions Layout:**
+  - Container: `flex items-center justify-end gap-3 mt-1`.
+  - Cancel Button (Secondary Action): `px-4 py-2 border border-base rounded-md text-sm font-medium text-secondary bg-surface hover:bg-elevated focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all`.
+  - Submit Button (Primary Action): `px-4 py-2 bg-accent-primary hover:bg-accent-primary/95 text-white rounded-md text-sm font-medium focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all flex items-center justify-center gap-2`.
+
+### 10.3 Micro-interactions & State Variations
+- **Focus Border Highlight:** Inputs and buttons apply `focus:ring-2 focus:ring-accent-primary focus:outline-none` when focused.
+- **Hover/Active States:**
+  - Input Fields: `hover:border-secondary/50`.
+  - Cancel Button: `hover:bg-elevated hover:text-primary`.
+  - Submit Button: `hover:bg-accent-primary/95 active:scale-[0.98] transition-transform duration-100`.
+- **Validation Error / Error Banner State:**
+  - Input Field: `border-status-blocked bg-status-blocked/5 focus:ring-status-blocked/20 text-status-blocked`.
+  - Error Banner (Form Level): `bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex gap-2 items-start animate-shake`.
+- **Disabled / Loading State:**
+  - Triggered during network execution. All inputs, text areas, and action buttons MUST receive the `disabled` property and `aria-disabled="true"`.
+  - Visual Overlay: Inputs get `opacity-60 bg-elevated/50 text-secondary cursor-not-allowed`.
+  - Submit Button Spinner: Replaces static text or displays inline next to it. Spinner styling: `w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin`.
+
+### 10.4 Focus Management & Keyboard Accessibility (a11y)
+The developer MUST programmatically ensure the following behaviors:
+1. **Focus Trap:** Focus MUST be trapped within the modal card while open. Tabbing past the last interactive element (Submit) wraps focus back to the first interactive element (Close/Input). Shift-tabbing from the first interactive element wraps to the last.
+2. **Autofocus:** When the dialog is rendered, the Workspace Name text input field MUST be immediately focused.
+3. **Escape Key Dismissal:** Pressing `Escape` while focus is inside the dialog must instantly close the modal and return focus to the trigger element.
+4. **Enter Key Form Submission:** Pressing `Enter` while inside the input text field must submit the form automatically if validations pass.
+5. **Backdrop Click Dismissal:** Clicking on the Backdrop Overlay (outside the Modal Card) must trigger a close operation.
+6. **Screen-Reader ARIA Roles:**
+   - Overlay container: `role="none"` (or empty).
+   - Dialog card container: `role="dialog"`, `aria-modal="true"`, `aria-labelledby="modal-title"`, and `aria-describedby="modal-description"`.
+   - Title element: `id="modal-title"`.
+   - Subtitle element: `id="modal-description"`.
+   - Inputs: `aria-required="true"`, `aria-invalid="true/false"`.
+
+### 10.5 Playwright Test Anchors (`data-testid`)
+For comprehensive testability, the developer MUST implement these target selectors:
+- Empty State Container: `data-testid="workspace-empty-state"`
+- Create Button (Trigger): `data-testid="create-workspace-button"`
+- Modal Overlay: `data-testid="create-workspace-modal-overlay"`
+- Dialog Container: `data-testid="create-workspace-dialog"`
+- Workspace Name Input: `data-testid="workspace-name-input"`
+- Cancel Button: `data-testid="workspace-modal-cancel"`
+- Submit Button: `data-testid="workspace-modal-submit"`
+- Error Message Banner: `data-testid="workspace-modal-error"`
+
+---
+
+## 11. Custom Keyframe Animations
 
 To enable fluid motion transitions across components, the developer should register the following configurations in the Tailwind CSS file (`tailwind.config.js`):
 
@@ -271,12 +341,22 @@ module.exports = {
         dropdownEnter: {
           '0%': { opacity: '0', transform: 'scale(0.95) translateY(-4px)' },
           '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
+        },
+        backdropFadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' }
+        },
+        modalPop: {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(10px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
         }
       },
       animation: {
         'shake': 'shake 0.3s cubic-bezier(.36,.07,.19,.97) both',
         'shimmer-fast': 'shimmer 1.5s linear infinite',
         'dropdown-enter': 'dropdownEnter 0.15s cubic-bezier(0.2, 0, 0, 1) forwards',
+        'backdrop-fade-in': 'backdropFadeIn 0.3s cubic-bezier(0.2, 0, 0, 1) forwards',
+        'modal-pop': 'modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
       }
     }
   }

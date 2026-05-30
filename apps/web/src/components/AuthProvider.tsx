@@ -1,7 +1,7 @@
 import { createContext, useContext, createSignal, onMount, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { getMe, getWorkspaces, logout as apiLogout } from '../api/auth';
+import { getMe, getWorkspaces, logout as apiLogout, createWorkspace as apiCreateWorkspace } from '../api/auth';
 import type { User, Workspace } from '../api/auth';
 
 export interface AuthContextType {
@@ -16,6 +16,7 @@ export interface AuthContextType {
   switching: () => boolean;
   switchWorkspace: (id: string) => Promise<void>;
   logout: () => Promise<void>;
+  createWorkspace: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>();
@@ -97,6 +98,23 @@ export function AuthProvider(props: { children: JSX.Element }) {
     }
   };
 
+  const handleCreateWorkspace = async (name: string) => {
+    setSwitching(true);
+    try {
+      const created = await apiCreateWorkspace(name);
+      const newWorkspace: Workspace = {
+        id: created.id,
+        name: created.name,
+        role: 'Admin',
+      };
+      setWorkspaces([...workspaces(), newWorkspace]);
+      setActiveWorkspace(newWorkspace);
+      navigate(`/w/${created.id}`);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
   const handleLogout = async () => {
     setLoading(true);
     try {
@@ -123,6 +141,7 @@ export function AuthProvider(props: { children: JSX.Element }) {
     switching,
     switchWorkspace,
     logout: handleLogout,
+    createWorkspace: handleCreateWorkspace,
   };
 
   return (

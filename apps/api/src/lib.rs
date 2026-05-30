@@ -6,7 +6,7 @@ pub mod services;
 pub use error::AppError;
 
 use crate::handlers::auth::{
-    login, logout, me, oauth_callback, oauth_redirect, register, workspaces,
+    create_workspace, login, logout, me, oauth_callback, oauth_redirect, register, workspaces,
 };
 use crate::handlers::board::{
     assign_card, block_card, create_checklist_item, delete_checklist_item, get_board_state,
@@ -35,7 +35,7 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route("/api/auth/me", get(me))
         .route("/api/auth/login/:provider", get(oauth_redirect))
         .route("/api/auth/callback/:provider", get(oauth_callback))
-        .route("/api/workspaces", get(workspaces))
+        .route("/api/workspaces", get(workspaces).post(create_workspace))
         .route("/api/workspaces/:workspace_id/board", get(get_board_state))
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/move",
