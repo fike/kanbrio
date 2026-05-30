@@ -5,10 +5,12 @@ pub mod services;
 
 pub use error::AppError;
 
-use crate::handlers::auth::{login, logout, me, oauth_callback, oauth_redirect, register};
+use crate::handlers::auth::{
+    login, logout, me, oauth_callback, oauth_redirect, register, workspaces,
+};
 use crate::handlers::board::{
-    assign_card, block_card, get_board_state, get_card_history, move_card, set_user_wip_limit,
-    unblock_card,
+    assign_card, block_card, create_checklist_item, delete_checklist_item, get_board_state,
+    get_card_history, move_card, set_user_wip_limit, unblock_card, update_checklist_item,
 };
 use axum::{
     Router,
@@ -33,6 +35,7 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route("/api/auth/me", get(me))
         .route("/api/auth/login/:provider", get(oauth_redirect))
         .route("/api/auth/callback/:provider", get(oauth_callback))
+        .route("/api/workspaces", get(workspaces))
         .route("/api/workspaces/:workspace_id/board", get(get_board_state))
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/move",
@@ -57,6 +60,18 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/assign",
             post(assign_card),
+        )
+        .route(
+            "/api/workspaces/:workspace_id/cards/:card_id/checklists",
+            post(create_checklist_item),
+        )
+        .route(
+            "/api/workspaces/:workspace_id/cards/:card_id/checklists/:checklist_id",
+            axum::routing::patch(update_checklist_item),
+        )
+        .route(
+            "/api/workspaces/:workspace_id/cards/:card_id/checklists/:checklist_id",
+            axum::routing::delete(delete_checklist_item),
         )
         .layer(TraceLayer::new_for_http())
         .layer(cors)

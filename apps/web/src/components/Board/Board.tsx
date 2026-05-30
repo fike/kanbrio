@@ -1,9 +1,11 @@
 import { type Component, For, Show, createMemo, createSignal, onMount, type JSX } from 'solid-js';
 import { createQuery, createMutation, useQueryClient } from '@tanstack/solid-query';
-import { fetchBoardState, moveCard, blockCard, unblockCard, type BoardState } from '../../api/board';
+import { fetchBoardState, moveCard, blockCard, unblockCard, updateChecklistItem, type BoardState } from '../../api/board';
 import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
+import { Shield } from 'lucide-solid';
 import Card from '../Card/Card';
 import CardHistory from '../CardHistory/CardHistory';
+import { useAuth } from '../AuthProvider';
 
 interface BoardProps {
   workspaceId: string;
@@ -51,6 +53,9 @@ const ColumnZone: Component<{
 
 const Board: Component<BoardProps> = (props) => {
   const queryClient = useQueryClient();
+  const auth = useAuth();
+  const userId = () => auth?.currentUser()?.id;
+
   const [selectedCardId, setSelectedCardId] = createSignal<string | null>(null);
   const [shakingCardId, setShakingCardId] = createSignal<string | null>(null);
   const [toast, setToast] = createSignal<{ message: string; visible: boolean } | null>(null);
@@ -67,9 +72,41 @@ const Board: Component<BoardProps> = (props) => {
     queryFn: () => fetchBoardState(props.workspaceId),
   }));
 
+  const toggleChecklistMutation = createMutation(() => ({
+    mutationFn: (data: { cardId: string; checklistId: string; isCompleted: boolean }) =>
+      updateChecklistItem(props.workspaceId, data.cardId, data.checklistId, {
+        is_completed: data.isCompleted,
+        completed_by: data.isCompleted ? userId() : null,
+      }),
+    onMutate: async (newData) => {
+      await queryClient.cancelQueries({ queryKey: ['board', props.workspaceId] });
+      const previousState = queryClient.getQueryData<BoardState>(['board', props.workspaceId]);
+
+      queryClient.setQueryData<BoardState>(['board', props.workspaceId], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          checklists: old.checklists.map((item) =>
+            item.id === newData.checklistId
+              ? { ...item, is_completed: newData.isCompleted, completed_by: newData.isCompleted ? userId() || null : null }
+              : item
+          ),
+        };
+      });
+
+      return { previousState };
+    },
+    onError: (_err, _newData, context) => {
+      queryClient.setQueryData(['board', props.workspaceId], context?.previousState);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['board', props.workspaceId] });
+    },
+  }));
+
   const mutation = createMutation(() => ({
     mutationFn: (data: { cardId: string, toColumnId: string, toSwimlaneId: string }) =>
-      moveCard(props.workspaceId, data.cardId, data.toColumnId, data.toSwimlaneId),
+      moveCard(props.workspaceId, data.cardId, data.toColumnId, data.toSwimlaneId, userId(), false),
     onMutate: async (newData) => {
       await queryClient.cancelQueries({ queryKey: ['board', props.workspaceId] });
       const previousState = queryClient.getQueryData<BoardState>(['board', props.workspaceId]);
@@ -88,14 +125,47 @@ const Board: Component<BoardProps> = (props) => {
 
       return { previousState };
     },
-    onError: (err, newData, context) => {
+    onError: async (err, newData, context) => {
       queryClient.setQueryData(['board', props.workspaceId], context?.previousState);
       if (err instanceof Error) {
+        console.error('[Mutation Error]', err.message, err);
         const isWip = err.message.includes('WIP limit') || err.message === 'WIP_LIMIT_EXCEEDED';
+        const isRuleViolation = err.message.includes('Rule violation') || err.message === 'RULE_VIOLATION';
+
         if (isWip) {
           setShakingCardId(newData.cardId);
           setTimeout(() => setShakingCardId(null), 300);
           showToast(err.message === 'WIP_LIMIT_EXCEEDED' ? 'WIP Limit Exceeded!' : err.message);
+        } else if (isRuleViolation) {
+          setShakingCardId(newData.cardId);
+          setTimeout(() => setShakingCardId(null), 300);
+          showToast(err.message === 'RULE_VIOLATION' ? 'Rule Violation!' : err.message);
+
+          const confirmOverride = confirm('Rule violation occurred. Do you want to attempt an Admin override?');
+          if (confirmOverride) {
+            const reason = prompt('Enter a justification for this override:');
+            if (reason) {
+              try {
+                await moveCard(
+                  props.workspaceId,
+                  newData.cardId,
+                  newData.toColumnId,
+                  newData.toSwimlaneId,
+                  userId(),
+                  true,
+                  reason
+                );
+                queryClient.invalidateQueries({ queryKey: ['board', props.workspaceId] });
+                showToast('Admin override successful!');
+              } catch (overrideErr) {
+                if (overrideErr instanceof Error) {
+                  showToast(`Override failed: ${overrideErr.message}`);
+                } else {
+                  showToast('Override failed!');
+                }
+              }
+            }
+          }
         } else {
           showToast(err.message);
         }
@@ -209,16 +279,23 @@ const Board: Component<BoardProps> = (props) => {
                     'bg-red-50': isExceeded(),
                   }}
                 >
-                  <h3
-                    class="text-sm font-semibold truncate"
-                    classList={{
-                      'text-primary': !isAtLimit() && !isExceeded(),
-                      'text-orange-500': isAtLimit(),
-                      'text-red-500': isExceeded(),
-                    }}
-                  >
-                    {column.title}
-                  </h3>
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <h3
+                      class="text-sm font-semibold truncate"
+                      classList={{
+                        'text-primary': !isAtLimit() && !isExceeded(),
+                        'text-orange-500': isAtLimit(),
+                        'text-red-500': isExceeded(),
+                      }}
+                    >
+                      {column.title}
+                    </h3>
+                    <Show when={query.data?.transition_rules.some(r => r.column_id === column.id)}>
+                      <span title="Active Column Transition Rules" class="inline-flex shrink-0">
+                        <Shield size={12} data-testid={`column-rule-indicator-${column.id}`} class="text-secondary/60" />
+                      </span>
+                    </Show>
+                  </div>
                   <Show when={column.wip_limit !== null}>
                     <span
                       class="text-[10px] px-1.5 py-0.5 rounded border"
@@ -303,18 +380,36 @@ const Board: Component<BoardProps> = (props) => {
                           onDrop={(cardId) => mutation.mutate({ cardId, toColumnId: column.id, toSwimlaneId: swimlane.id })}
                         >
                           <For each={query.data!.cards.filter(c => c.current_column_id === column.id && c.current_swimlane_id === swimlane.id)}>
-                            {(card) => (
-                              <Card
-                                id={card.id.split('-')[0]}
-                                fullId={card.id}
-                                title={card.title}
-                                isBlocked={card.is_blocked}
-                                isShaking={shakingCardId() === card.id}
-                                onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
-                                onUnblock={() => unblockMutation.mutate(card.id)}
-                                onClick={() => setSelectedCardId(card.id)}
-                              />
-                            )}
+                            {(card) => {
+                              const subtasks = () => query.data!.cards.filter(c => c.parent_id === card.id);
+                              const totalSub = () => subtasks().length;
+                              const completedSub = () => subtasks().filter(c => {
+                                const col = query.data!.columns.find(col => col.id === c.current_column_id);
+                                return col?.is_done || false;
+                              }).length;
+
+                              return (
+                                <Card
+                                  id={card.id.split('-')[0]}
+                                  fullId={card.id}
+                                  title={card.title}
+                                  isBlocked={card.is_blocked}
+                                  isShaking={shakingCardId() === card.id}
+                                  subtasksCount={completedSub()}
+                                  totalSubtasks={totalSub()}
+                                  checklists={query.data!.checklists.filter(c => c.card_id === card.id)}
+                                  onToggleChecklist={(checklistId) => {
+                                    const item = query.data!.checklists.find(c => c.id === checklistId);
+                                    if (item) {
+                                      toggleChecklistMutation.mutate({ cardId: card.id, checklistId, isCompleted: !item.is_completed });
+                                    }
+                                  }}
+                                  onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
+                                  onUnblock={() => unblockMutation.mutate(card.id)}
+                                  onClick={() => setSelectedCardId(card.id)}
+                                />
+                              );
+                            }}
                           </For>
                         </ColumnZone>
                       )}
@@ -350,7 +445,7 @@ const Board: Component<BoardProps> = (props) => {
 
       {/* Toast Notification for errors */}
       <Show when={toast()?.visible}>
-        <div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 bg-surface border border-status-blocked border-l-4 shadow-xl p-4 rounded-md animate-in fade-in slide-in-from-bottom duration-300">
+        <div data-testid="rule-violation-toast" class="fixed bottom-4 right-4 z-50 flex items-center gap-3 bg-surface border border-status-blocked border-l-4 shadow-xl p-4 rounded-md animate-in fade-in slide-in-from-bottom duration-300">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-status-blocked shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>

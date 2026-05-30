@@ -5,6 +5,17 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+pub struct TransitionRule {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub column_id: Uuid,
+    pub rule_type: String,     // "arrival" or "departure"
+    pub criteria_type: String, // "assignee_required", "checklist_completed", "subtasks_completed"
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Column {
     pub id: Uuid,
     pub workspace_id: Uuid,
@@ -32,6 +43,8 @@ pub struct BoardState {
     pub columns: Vec<Column>,
     pub swimlanes: Vec<Swimlane>,
     pub cards: Vec<Card>,
+    pub checklists: Vec<crate::models::card::ChecklistItem>,
+    pub transition_rules: Vec<TransitionRule>,
 }
 
 impl BoardState {
@@ -58,12 +71,38 @@ impl BoardState {
         .bind(workspace_id)
         .fetch_all(pool);
 
-        let (columns, swimlanes, cards) = tokio::try_join!(columns_fut, swimlanes_fut, cards_fut)?;
+        let checklists_fut = sqlx::query_as::<_, crate::models::card::ChecklistItem>(
+            r#"
+            SELECT c.*
+            FROM card_checklists c
+            INNER JOIN cards card ON c.card_id = card.id
+            WHERE card.workspace_id = $1 AND card.deleted_at IS NULL
+            ORDER BY c.card_id, c.position
+            "#,
+        )
+        .bind(workspace_id)
+        .fetch_all(pool);
+
+        let rules_fut = sqlx::query_as::<_, TransitionRule>(
+            "SELECT * FROM transition_rules WHERE workspace_id = $1",
+        )
+        .bind(workspace_id)
+        .fetch_all(pool);
+
+        let (columns, swimlanes, cards, checklists, transition_rules) = tokio::try_join!(
+            columns_fut,
+            swimlanes_fut,
+            cards_fut,
+            checklists_fut,
+            rules_fut
+        )?;
 
         Ok(BoardState {
             columns,
             swimlanes,
             cards,
+            checklists,
+            transition_rules,
         })
     }
 }

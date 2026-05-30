@@ -60,6 +60,8 @@ async fn test_card_audit_trail(pool: sqlx::PgPool) -> anyhow::Result<()> {
             to_column_id: col_b_id,
             to_swimlane_id: lane_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await?;

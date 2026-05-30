@@ -28,3 +28,23 @@ VALUES
   ('550e8400-e29b-41d4-a716-446655440007', '550e8400-e29b-41d4-a716-446655440000', 'Design System Tokens', '550e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440004'),
   ('550e8400-e29b-41d4-a716-446655440008', '550e8400-e29b-41d4-a716-446655440000', 'Fix Security Leak', '550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440005')
 ON CONFLICT (id) DO NOTHING;
+
+-- 5. Create Default User for E2E and Local testing
+INSERT INTO users (id, email, name, created_at, updated_at)
+VALUES ('550e8400-e29b-41d4-a716-446655449999', 'admin@test.com', 'Admin User', NOW(), NOW())
+ON CONFLICT (id) DO NOTHING;
+
+-- 6. Associate Default User with Default Workspace as Admin
+INSERT INTO workspace_members (workspace_id, user_id, role, joined_at, created_at, updated_at)
+VALUES ('550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655449999', 'admin', NOW(), NOW(), NOW())
+ON CONFLICT (workspace_id, user_id) DO NOTHING;
+
+-- 7. Seed a default session for E2E testing
+INSERT INTO user_sessions (id, user_id, session_token, expires_at)
+VALUES (
+  '550e8400-e29b-41d4-a716-446655448888',
+  '550e8400-e29b-41d4-a716-446655449999',
+  'e2e-session-token-for-testing-123456',
+  NOW() + INTERVAL '1 day'
+)
+ON CONFLICT (id) DO UPDATE SET expires_at = EXCLUDED.expires_at;

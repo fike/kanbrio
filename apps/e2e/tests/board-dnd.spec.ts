@@ -1,6 +1,44 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Kanban Board Drag and Drop', () => {
+  test.beforeEach(async ({ page, context }) => {
+    // Set authenticated session cookie for real backend requests
+    await context.addCookies([{
+      name: '__Host-sid',
+      value: 'e2e-session-token-for-testing-123456',
+      domain: 'localhost',
+      path: '/',
+      secure: true
+    }]);
+
+    // Mock authentication endpoints to bypass login redirect
+    await page.route('**/api/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '550e8400-e29b-41d4-a716-446655449999',
+          email: 'admin@test.com',
+          name: 'Admin User',
+          avatar_url: null,
+          workspaces: [
+            { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+          ]
+        })
+      });
+    });
+
+    await page.route('**/api/workspaces', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: '550e8400-e29b-41d4-a716-446655440000', name: 'Default Workspace', role: 'admin' }
+        ])
+      });
+    });
+  });
+
   test('should move a card from To Do to Doing and persist after reload', async ({ page }) => {
     // 1. Navigate to the board
     await page.goto('/');

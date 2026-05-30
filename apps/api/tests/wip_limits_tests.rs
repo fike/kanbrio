@@ -69,6 +69,8 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
             to_column_id: col_limit_id,
             to_swimlane_id: lane_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await;
@@ -88,6 +90,8 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
             to_column_id: col_unlimit_id,
             to_swimlane_id: lane_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await?;
@@ -101,6 +105,8 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
             to_column_id: col_limit_id,
             to_swimlane_id: lane_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await;
@@ -178,6 +184,8 @@ async fn test_wip_limit_ignore_same_column(pool: sqlx::PgPool) -> anyhow::Result
             to_column_id: col_id,
             to_swimlane_id: lane2_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await;
@@ -256,6 +264,8 @@ async fn test_swimlane_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Resu
             to_column_id: col_id,
             to_swimlane_id: lane_limit_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await;
@@ -274,6 +284,8 @@ async fn test_swimlane_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Resu
             to_column_id: col_id,
             to_swimlane_id: lane_unlimit_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await?;
@@ -287,6 +299,8 @@ async fn test_swimlane_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Resu
             to_column_id: col_id,
             to_swimlane_id: lane_limit_id,
             user_id: None,
+            override_rules: None,
+            override_reason: None,
         },
     )
     .await;
