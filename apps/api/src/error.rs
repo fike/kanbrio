@@ -34,6 +34,9 @@ pub enum AppError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Too many requests: {0}")]
+    TooManyRequests(String),
 }
 
 impl IntoResponse for AppError {
@@ -80,6 +83,9 @@ impl IntoResponse for AppError {
                     "Internal server error".to_string(),
                     None,
                 )
+            }
+            AppError::TooManyRequests(ref msg) => {
+                (StatusCode::TOO_MANY_REQUESTS, msg.clone(), None)
             }
         };
 

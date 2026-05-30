@@ -33,6 +33,7 @@ async fn test_workspace_creation_and_seeding_flow(pool: sqlx::PgPool) -> anyhow:
                 .method(http::Method::POST)
                 .uri("/api/workspaces")
                 .header(http::header::CONTENT_TYPE, "application/json")
+                .header("X-Requested-With", "XMLHttpRequest")
                 .header(
                     http::header::COOKIE,
                     format!("__Host-sid={}", session.session_token),
@@ -119,6 +120,7 @@ async fn test_workspace_creation_invalid_name(pool: sqlx::PgPool) -> anyhow::Res
                 .method(http::Method::POST)
                 .uri("/api/workspaces")
                 .header(http::header::CONTENT_TYPE, "application/json")
+                .header("X-Requested-With", "XMLHttpRequest")
                 .header(
                     http::header::COOKIE,
                     format!("__Host-sid={}", session.session_token),
@@ -142,6 +144,7 @@ async fn test_workspace_creation_invalid_name(pool: sqlx::PgPool) -> anyhow::Res
                 .method(http::Method::POST)
                 .uri("/api/workspaces")
                 .header(http::header::CONTENT_TYPE, "application/json")
+                .header("X-Requested-With", "XMLHttpRequest")
                 .header(
                     http::header::COOKIE,
                     format!("__Host-sid={}", session.session_token),
