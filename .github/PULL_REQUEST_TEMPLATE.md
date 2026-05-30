@@ -1,26 +1,51 @@
-## Context
-<!-- Describe the problem being solved or the value being added -->
+# Descrição do PR
 
+## 🎯 Contexto e Valor
+<!-- Descreva sucintamente a jornada de usuário resolvida e o valor de negócio/impacto entregue -->
 
-## Closes
-<!-- Reference the original Issue (e.g., Closes #X) -->
-Closes #
+**Issue Relacionado:** Closes #<issue_number> / Beads ID: <beads_id>
 
-## Changes Made
-<!-- Briefly list the technical changes made in this PR -->
-- 
-- 
+---
 
-## 🤖 Mandatory AI Audits (The Review Gates)
-<!-- As a solo developer, you must invoke the following agents to audit this PR before merging. Check the boxes once they provide a "PASS" verdict. -->
+## 🛠️ Mudanças Realizadas
 
-- [ ] **Gate A: Security Review (`@security`)**
-  - Prompt: *"@security, audit this PR for injection, logic flaws, and credential leaks."*
-- [ ] **Gate B: Reliability Review (`@sre`)**
-  - Prompt: *"@sre, perform a blast-radius analysis and check observability (logs/traces) for this PR."*
-- [ ] **Gate C: Compliance Review (`@legal-counsel`)**
-  - Prompt: *"@legal-counsel, perform a dependency license check for new additions in this PR."*
+<!-- Descreva as alterações técnicas agrupadas de forma lógica e hierárquica por componente -->
 
-## Developer Sanity Check
-- [ ] CI pipeline is green (Lint, Format, Tests).
-- [ ] `DESIGN.md` visual tokens were strictly followed (if UI changes are included).
+### 💾 1. Banco de Dados (DDL & Migrações)
+* [Ex: Adicionada tabela `workspace_members` em `apps/api/migrations/...sql`]
+
+### ⚙️ 2. Backend (Rust & Axum)
+* [Ex: Adicionado endpoint `POST /api/workspaces` em `apps/api/src/handlers/auth.rs`]
+
+### 🖥️ 3. Frontend (SolidJS & DESIGN.md)
+* [Ex: Atualizados tokens de design e implementado modal de criação em `apps/web/src/components/...tsx`]
+
+---
+
+## 📸 Provas Visuais (UI/UX)
+<!-- Inclua screenshots ou GIFs demonstrando a mudança visual (especialmente fluxos interativos de loading, erro, vazio e sucesso) -->
+
+| Antes | Depois |
+| :---: | :---: |
+| [Screenshot antigo] | [Screenshot/GIF demonstrando o novo fluxo interativo] |
+
+---
+
+## 🧪 Suíte de Testes Executada (Logs de Saída)
+
+### Testes Backend (Rust Cargo)
+```bash
+# Cole aqui os logs de sucesso da execução de testes em Rust (cargo test)
+```
+
+### Testes Frontend & E2E (Vitest / Playwright)
+```bash
+# Cole aqui os logs de sucesso dos testes do SolidJS (Vitest) e testes E2E (Playwright)
+```
+
+---
+
+## 🔒 Relatórios de Auditoria de IA (Quality Gates)
+* **Segurança (`@security`):** [PASS / PENDING] (Sanitização de entradas, validação de cookies de sessão, controle de tenants)
+* **Confiabilidade (`@sre`):** [PASS / PENDING] (Análise de concorrência, row locks pessimistas, índices de banco de dados, observabilidade)
+* **Conformidade (`@legal-counsel`):** [PASS / PENDING] (Auditoria de licenças de terceiros via `license-audit`)

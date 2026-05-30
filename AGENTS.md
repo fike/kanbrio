@@ -114,7 +114,7 @@ This lifecycle is divided into **4 Core OODA Phases**:
 ## 🔗 Pull Request & GitHub Issue Integration Standards
 
 Whenever creating or editing a Pull Request (PR) on GitHub, agents MUST ensure complete trace link association:
-1. **Rich PR Descriptions**: Write a structured body detailing the exact technical changes made, files added/modified, and the results of locally executed quality checks/tests.
+1. **Rich PR Descriptions**: Write a structured body detailing the exact technical changes made, files added/modified, and the results of locally executed quality checks/tests. The description MUST conform to the standard template defined in [.github/pull_request_template.md](file:///Users/fernandoike/projects/pets/kanbrio/.github/pull_request_template.md) to automatically populate on GitHub.
 2. **Explicit Closing Tags**:
    - For partial implementations, discovery reports, or technical planning PRs, include `Ref #<issue_number>` in the description.
    - For full implementations or bug-fix PRs, you **MUST** include `Closes #<issue_number>` or `Fixes #<issue_number>` at the bottom of the PR description to ensure the corresponding GitHub issue is automatically closed when a human reviews and merges the PR.
