@@ -1,6 +1,6 @@
-import { type Component, For, Show, createMemo, createSignal, onMount, type JSX } from 'solid-js';
+import { type Component, For, Show, createMemo, createSignal, onMount, type JSX, createEffect } from 'solid-js';
 import { createQuery, createMutation, useQueryClient } from '@tanstack/solid-query';
-import { fetchBoardState, moveCard, blockCard, unblockCard, updateChecklistItem, type BoardState } from '../../api/board';
+import { fetchBoardState, moveCard, blockCard, unblockCard, updateChecklistItem, createCard, type BoardState, type CardData } from '../../api/board';
 import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { Shield } from 'lucide-solid';
 import Card from '../Card/Card';
@@ -63,6 +63,123 @@ const Board: Component<BoardProps> = (props) => {
   const [shakingCardId, setShakingCardId] = createSignal<string | null>(null);
   const [toast, setToast] = createSignal<{ message: string; visible: boolean } | null>(null);
   const [activeIntersection, setActiveIntersection] = createSignal<{ columnId: string; swimlaneId: string } | null>(null);
+
+  const [newSubtaskTitle, setNewSubtaskTitle] = createSignal('');
+  const [isSubmittingSubtask, setIsSubmittingSubtask] = createSignal(false);
+  const [errorBannerMsg, setErrorBannerMsg] = createSignal<string | null>(null);
+
+  const subtasksForSelected = () => {
+    const parentId = selectedCardId();
+    if (!parentId) return [];
+    return query.data?.cards.filter(c => c.parent_id === parentId) || [];
+  };
+
+  const handleToggleSubtask = async (subtask: CardData) => {
+    const columns = query.data?.columns || [];
+    const isCurrentlyDone = columns.find(col => col.id === subtask.current_column_id)?.is_done || false;
+
+    let targetColumn;
+    if (isCurrentlyDone) {
+      targetColumn = columns.find(col => !col.is_done);
+    } else {
+      targetColumn = columns.find(col => col.is_done);
+    }
+
+    if (targetColumn) {
+      try {
+        await mutation.mutateAsync({
+          cardId: subtask.id,
+          toColumnId: targetColumn.id,
+          toSwimlaneId: subtask.current_swimlane_id,
+        });
+        showToast('Subtask updated successfully!');
+      } catch (err) {
+        if (err instanceof Error) {
+          showToast(`Failed to update subtask: ${err.message}`);
+        }
+      }
+    }
+  };
+
+  const handleQuickAddSubtask = async (e: SubmitEvent) => {
+    e.preventDefault();
+    const title = newSubtaskTitle().trim();
+    if (!title) {
+      setErrorBannerMsg('Subtask title cannot be empty.');
+      return;
+    }
+
+    setIsSubmittingSubtask(true);
+    setErrorBannerMsg(null);
+
+    try {
+      const columns = sortedColumns();
+      const swimlanes = sortedSwimlanes();
+      if (columns.length === 0 || swimlanes.length === 0) {
+        throw new Error('No columns or swimlanes configured on this board.');
+      }
+
+      const defaultCol = columns[0].id;
+      const defaultLane = swimlanes[0].id;
+
+      await createCard(
+        props.workspaceId,
+        title,
+        defaultCol,
+        defaultLane,
+        selectedCardId()!
+      );
+
+      setNewSubtaskTitle('');
+      queryClient.invalidateQueries({ queryKey: ['board', props.workspaceId] });
+      showToast('Subtask added successfully!');
+    } catch (err) {
+      if (err instanceof Error) {
+        setErrorBannerMsg(err.message);
+      } else {
+        setErrorBannerMsg('An unexpected error occurred.');
+      }
+    } finally {
+      setIsSubmittingSubtask(false);
+    }
+  };
+
+  let drawerRef!: HTMLDivElement;
+
+  const handleDrawerKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      const focusableEls = drawerRef.querySelectorAll(
+        'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex="0"]'
+      );
+      if (focusableEls.length === 0) return;
+      const firstEl = focusableEls[0] as HTMLElement;
+      const lastEl = focusableEls[focusableEls.length - 1] as HTMLElement;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstEl) {
+          lastEl.focus();
+          e.preventDefault();
+        }
+      } else {
+        if (document.activeElement === lastEl) {
+          firstEl.focus();
+          e.preventDefault();
+        }
+      }
+    } else if (e.key === 'Escape') {
+      setSelectedCardId(null);
+    }
+  };
+
+  createEffect(() => {
+    const cardId = selectedCardId();
+    if (cardId && drawerRef) {
+      setTimeout(() => {
+        const firstInput = drawerRef.querySelector('input') as HTMLInputElement | null;
+        firstInput?.focus();
+      }, 50);
+    }
+  });
 
   const showToast = (message: string) => {
     setToast({ message, visible: true });
@@ -406,6 +523,17 @@ const Board: Component<BoardProps> = (props) => {
                                   return col?.is_done || false;
                                 }).length;
 
+                                const parentCard = () => query.data!.cards.find(c => c.id === card.parent_id);
+                                const subtasksList = () => subtasks().map(sub => {
+                                  const col = query.data!.columns.find(col => col.id === sub.current_column_id);
+                                  return {
+                                    id: sub.id,
+                                    title: sub.title,
+                                    isDone: col?.is_done || false,
+                                    columnName: col?.title || '',
+                                  };
+                                });
+
                                 return (
                                   <Card
                                     id={card.id.split('-')[0]}
@@ -414,8 +542,11 @@ const Board: Component<BoardProps> = (props) => {
                                     isBlocked={card.is_blocked}
                                     blockerReason={card.blocked_reason || undefined}
                                     isShaking={shakingCardId() === card.id}
+                                    parentTitle={parentCard()?.title}
+                                    parentId={card.parent_id || undefined}
                                     subtasksCount={completedSub()}
                                     totalSubtasks={totalSub()}
+                                    subtasks={subtasksList()}
                                     checklists={query.data!.checklists.filter(c => c.card_id === card.id)}
                                     onToggleChecklist={(checklistId) => {
                                       const item = query.data!.checklists.find(c => c.id === checklistId);
@@ -425,7 +556,11 @@ const Board: Component<BoardProps> = (props) => {
                                     }}
                                     onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
                                     onUnblock={() => unblockMutation.mutate(card.id)}
-                                    onClick={() => setSelectedCardId(card.id)}
+                                    onClick={() => {
+                                      setSelectedCardId(card.id);
+                                      setErrorBannerMsg(null);
+                                      setNewSubtaskTitle('');
+                                    }}
                                     onOpenBlockerDrawer={() => setBlockerDrawerCardId(card.id)}
                                   />
                                 );
@@ -480,11 +615,17 @@ const Board: Component<BoardProps> = (props) => {
         </div>
       </Show>
 
-      {/* Card History Sidebar */}
+      {/* Card Details Drawer */}
       <Show when={selectedCardId()}>
-        <div data-testid="card-history-sidebar" class="fixed inset-y-0 right-0 w-96 bg-surface shadow-2xl border-l border-base z-50 flex flex-col animate-in slide-in-from-right duration-300">
+        <div
+          ref={drawerRef}
+          onKeyDown={handleDrawerKeyDown}
+          data-testid="card-history-sidebar"
+          class="fixed inset-y-0 right-0 w-96 bg-surface shadow-2xl border-l border-base z-50 flex flex-col animate-in slide-in-from-right duration-300 focus:outline-none"
+          tabIndex={-1}
+        >
           <div class="flex justify-between items-center p-4 border-b border-base bg-elevated/20">
-            <h2 class="text-sm font-bold uppercase tracking-widest text-primary">Card History</h2>
+            <h2 class="text-sm font-bold uppercase tracking-widest text-primary">Card Details</h2>
             <button
               onClick={() => setSelectedCardId(null)}
               class="p-1 rounded-full hover:bg-base/50 text-secondary hover:text-primary transition-colors"
@@ -492,11 +633,102 @@ const Board: Component<BoardProps> = (props) => {
               ✕
             </button>
           </div>
-          <div class="flex-1 overflow-y-auto p-4">
-            <CardHistory
-              workspaceId={props.workspaceId}
-              cardId={selectedCardId()!}
-            />
+          <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+            {/* Decomposition Panel */}
+            <div data-testid="card-decomposition-panel" class="flex flex-col gap-3 border-b border-base/50 pb-6">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-secondary">Decomposition</h3>
+
+              {/* Validation error banner */}
+              <Show when={errorBannerMsg()}>
+                <div
+                  data-testid="decomposition-error-banner"
+                  role="alert"
+                  class="bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs p-2.5 rounded animate-shake"
+                >
+                  {errorBannerMsg()}
+                </div>
+              </Show>
+
+              {/* Subtasks List */}
+              <div class="flex flex-col gap-2">
+                <Show
+                  when={subtasksForSelected().length > 0}
+                  fallback={
+                    <p data-testid="decomposition-empty-state" class="text-xs text-secondary italic">
+                      No subtasks created yet. Add one below to start decomposing this task.
+                    </p>
+                  }
+                >
+                  <For each={subtasksForSelected()}>
+                    {(subtask) => {
+                      const isDone = () => {
+                        const col = query.data?.columns.find(col => col.id === subtask.current_column_id);
+                        return col?.is_done || false;
+                      };
+                      const columnName = () => {
+                        const col = query.data?.columns.find(col => col.id === subtask.current_column_id);
+                        return col?.title || '';
+                      };
+
+                      return (
+                        <div class="flex items-center justify-between gap-2 p-2 bg-elevated/30 rounded border border-base/30 text-xs">
+                          <div class="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              data-testid={`subtask-checkbox-${subtask.id}`}
+                              checked={isDone()}
+                              onChange={() => handleToggleSubtask(subtask)}
+                              class="w-3.5 h-3.5 rounded border-base text-accent-primary focus:ring-accent-primary cursor-pointer"
+                            />
+                            <span
+                              classList={{ 'line-through text-tertiary': isDone(), 'text-primary': !isDone() }}
+                              class="font-medium truncate"
+                            >
+                              {subtask.title}
+                            </span>
+                          </div>
+                          <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-accent-primary/10 border border-accent-primary/20 text-accent-primary whitespace-nowrap">
+                            {columnName()}
+                          </span>
+                        </div>
+                      );
+                    }}
+                  </For>
+                </Show>
+              </div>
+
+              {/* Inline quick-add form */}
+              <form onSubmit={handleQuickAddSubtask} class="flex flex-col gap-2 mt-2">
+                <input
+                  type="text"
+                  data-testid="decomposition-add-input"
+                  placeholder="Add a subtask..."
+                  value={newSubtaskTitle()}
+                  onInput={(e) => setNewSubtaskTitle(e.currentTarget.value)}
+                  class="w-full text-xs p-2 rounded bg-elevated border border-base focus:ring-1 focus:ring-accent-primary focus:outline-none text-primary placeholder-tertiary"
+                />
+                <button
+                  type="submit"
+                  data-testid="decomposition-add-submit"
+                  disabled={isSubmittingSubtask()}
+                  class="w-full text-xs font-semibold py-2 px-3 bg-accent-primary hover:bg-accent-primary/95 text-white rounded transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Show when={isSubmittingSubtask()}>
+                    <span class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
+                  </Show>
+                  <span>Add Subtask</span>
+                </button>
+              </form>
+            </div>
+
+            {/* History Panel */}
+            <div class="flex flex-col gap-3">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-secondary">Activity History</h3>
+              <CardHistory
+                workspaceId={props.workspaceId}
+                cardId={selectedCardId()!}
+              />
+            </div>
           </div>
         </div>
       </Show>

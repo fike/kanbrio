@@ -289,7 +289,8 @@ export const createCard = async (
   workspaceId: string,
   title: string,
   currentColumnId: string,
-  currentSwimlaneId: string
+  currentSwimlaneId: string,
+  parentId?: string | null
 ): Promise<CardData> => {
   const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards`, {
     method: 'POST',
@@ -300,6 +301,7 @@ export const createCard = async (
       title,
       current_column_id: currentColumnId,
       current_swimlane_id: currentSwimlaneId,
+      parent_id: parentId || null,
     }),
   });
 
