@@ -135,4 +135,45 @@ test.describe('Card Creation Inline Form E2E', () => {
     await expect(toast).toBeVisible();
     await expect(toast).toContainText('exceeded');
   });
+
+  test('should allow creating multiple cards in sequence using mouse clicks', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByLabel('Card: Fix Security Leak')).toBeVisible();
+
+    const todoColId = '550e8400-e29b-41d4-a716-446655440001';
+    const standardLaneId = '550e8400-e29b-41d4-a716-446655440004';
+
+    const addCardBtn = page.locator(`[data-testid="column-add-card-button-${todoColId}-${standardLaneId}"]`);
+
+    // 1. Create First Card
+    await addCardBtn.click();
+    const formCard = page.locator(`[data-testid="inline-card-form-${todoColId}-${standardLaneId}"]`);
+    await expect(formCard).toBeVisible();
+    const titleInput = formCard.locator('[data-testid="inline-card-title-input"]');
+    await titleInput.fill('First Mouse Card');
+    const submitBtn = formCard.locator('[data-testid="inline-card-submit"]');
+
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/cards') && r.request().method() === 'POST' && r.status() === 201),
+      submitBtn.click()
+    ]);
+
+    await expect(formCard).toBeHidden();
+    await expect(page.locator('text=First Mouse Card')).toBeVisible();
+
+    // 2. Attempt to Create Second Card using mouse click
+    await expect(addCardBtn).toBeVisible();
+    await addCardBtn.click();
+
+    // Check if the form opens successfully
+    await expect(formCard).toBeVisible();
+    await titleInput.fill('Second Mouse Card');
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/cards') && r.request().method() === 'POST' && r.status() === 201),
+      submitBtn.click()
+    ]);
+
+    await expect(formCard).toBeHidden();
+    await expect(page.locator('text=Second Mouse Card')).toBeVisible();
+  });
 });
