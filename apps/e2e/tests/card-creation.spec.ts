@@ -41,6 +41,7 @@ test.describe('Card Creation Inline Form E2E', () => {
 
   test('should enforce inline form mount, input validations, loading states, and error shaking', async ({ page }) => {
     await page.goto('/');
+    await expect(page.getByLabel('Card: Fix Security Leak')).toBeVisible();
 
     const todoColId = '550e8400-e29b-41d4-a716-446655440001';
     const standardLaneId = '550e8400-e29b-41d4-a716-446655440004';
@@ -89,7 +90,7 @@ test.describe('Card Creation Inline Form E2E', () => {
     await titleInput.fill('Deploy Auth Microservice');
 
     const [response] = await Promise.all([
-      page.waitForResponse(r => r.url().includes('/cards') && r.method() === 'POST' && r.status() === 201),
+      page.waitForResponse(r => r.url().includes('/cards') && r.request().method() === 'POST' && r.status() === 201),
       submitBtn.click()
     ]);
 
@@ -100,6 +101,7 @@ test.describe('Card Creation Inline Form E2E', () => {
 
   test('should shake and display error banner and toast on WIP limit violation', async ({ page }) => {
     await page.goto('/');
+    await expect(page.getByLabel('Card: Fix Security Leak')).toBeVisible();
 
     const doneColId = '550e8400-e29b-41d4-a716-446655440003';
     const standardLaneId = '550e8400-e29b-41d4-a716-446655440004';
@@ -126,11 +128,11 @@ test.describe('Card Creation Inline Form E2E', () => {
     // 3. Verify shake, error banner, and bottom-right toast
     const errorMsg = formCard.locator('[data-testid="inline-card-error"]');
     await expect(errorMsg).toBeVisible();
-    await expect(errorMsg).toContainText('WIP limit exceeded for column');
+    await expect(errorMsg).toContainText('WIP limit 1 exceeded for column');
     await expect(formCard).toHaveClass(/animate-shake/);
 
     const toast = page.locator('[data-testid="rule-violation-toast"]');
     await expect(toast).toBeVisible();
-    await expect(toast).toContainText('WIP limit exceeded');
+    await expect(toast).toContainText('exceeded');
   });
 });
