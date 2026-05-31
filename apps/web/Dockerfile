@@ -1,5 +1,4 @@
-# Stage 1: Build the Solid.js / Vite frontend
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
@@ -15,20 +14,8 @@ RUN npm ci
 COPY packages/ui-core ./packages/ui-core
 COPY apps/web ./apps/web
 
-# Build the web application
-RUN npm run web:build
-
-# Stage 2: Serve using Nginx
-FROM nginx:alpine
-
-# Copy built static files to Nginx public folder
-COPY --from=builder /usr/src/app/apps/web/dist /usr/share/nginx/html
-
-# Copy our custom Nginx config to proxy /api and listen on 5173
-COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
-
 # Expose port 5173
 EXPOSE 5173
 
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start Vite dev server in host mode
+CMD ["npm", "run", "dev", "-w", "apps/web", "--", "--host", "0.0.0.0"]
