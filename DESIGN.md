@@ -814,4 +814,376 @@ The developer must implement the following specific identifiers to satisfy the e
 - **Cancel Button:** `data-testid="inline-card-cancel"` | `role="button"`
 - **Error Banner:** `data-testid="inline-card-error"` | `role="alert"`
 
+---
+
+## 14. Component Styling Guidelines: Recursive Task Hierarchy & Visualization
+
+This section establishes the presentation, interaction, system states, and accessibility focus loops for the Recursive Task Hierarchy & Visualization features (`epic kanbrio-eri`), including card badges, reactive progress rollup, and the details drawer decomposition panel.
+
+### 14.1 Hierarchy Badges & Progress Rollup (US1)
+
+If a card has recursive hierarchy relationships, visual identifiers must render on the card face in a highly dense, low-friction manner.
+
+#### 14.1.1 Parent Badge (↑ {parent_title})
+- **Strategic Intent:** Provides quick navigation and visual association with the parent task.
+- **Styling:** Compact tag showing `↑ ` followed by parent title. Truncate parent title to a maximum of 20 characters with ellipsis.
+- **Tailwind Classes:** `inline-flex items-center gap-1 text-[10px] font-semibold text-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20 px-1.5 py-0.5 rounded transition-all cursor-pointer select-none max-w-[150px] truncate`
+
+#### 14.1.2 Subtask Count Badge (⑆ {completed_count}/{total_count})
+- **Strategic Intent:** Indicates the scale of decomposition and completion status at a glance.
+- **Styling:** Compact count tag showing `⑆ ` followed by `completed_count/total_count`.
+- **Tailwind Classes:** `inline-flex items-center gap-1 text-[10px] font-semibold text-secondary bg-elevated hover:bg-elevated/80 dark:bg-slate-800 dark:hover:bg-slate-700/80 px-1.5 py-0.5 rounded transition-all cursor-pointer select-none`
+
+#### 14.1.3 Accessible Subtask Tooltip List
+- **Strategic Intent:** Lists subtasks and their columns on hover to reduce context switching.
+- **Container Styling:** `absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-surface dark:bg-slate-900 border border-base shadow-lg rounded-md p-2.5 flex flex-col gap-1.5 z-50 text-xs text-primary transition-all duration-150 ease-standard pointer-events-none group-hover:opacity-100 opacity-0 group-hover:pointer-events-auto`
+- **Subtask Item Layout:** `flex justify-between items-center gap-2 py-0.5 text-xs border-b border-base/30 last:border-0`
+  - **Subtask Title:** `truncate font-medium flex-1 text-primary`
+  - **Status Tag:** Small status tag matching column status colors.
+
+#### 14.1.4 Visual Card Face Markup Structure
+```html
+<div
+  class="relative flex flex-col gap-1 p-3 bg-surface dark:bg-slate-900 border border-base rounded-md shadow-sm hover:shadow-md transition-all ease-standard duration-300"
+  data-testid="card-container-{card_id}"
+  data-card-id="{card_id}"
+  tabindex="0"
+  role="group"
+  aria-labelledby="card-title-{card_id}"
+>
+  <!-- Card Header Row (Badges) -->
+  <div class="flex flex-wrap items-center gap-1.5 mb-1 select-none">
+    <!-- Parent Badge -->
+    <span
+      class="inline-flex items-center gap-1 text-[10px] font-semibold text-accent-primary bg-accent-primary/10 hover:bg-accent-primary/20 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20 px-1.5 py-0.5 rounded transition-all cursor-pointer max-w-[150px] truncate"
+      data-testid="card-parent-badge-{card_id}"
+      role="link"
+      aria-label="Parent task: Launch Marketing Campaign"
+    >
+      ↑ Launch Marketing C...
+    </span>
+
+    <!-- Children Count Badge Container (Tooltip Group) -->
+    <div class="relative group">
+      <span
+        class="inline-flex items-center gap-1 text-[10px] font-semibold text-secondary bg-elevated hover:bg-elevated/80 dark:bg-slate-800 dark:hover:bg-slate-700/80 px-1.5 py-0.5 rounded transition-all cursor-pointer"
+        data-testid="card-children-badge-{card_id}"
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        ⑆ 1/2
+      </span>
+
+      <!-- Hover Tooltip List -->
+      <div
+        class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-surface dark:bg-slate-900 border border-base shadow-lg rounded-md p-2.5 flex flex-col gap-1.5 z-50 text-xs text-primary opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150 ease-standard"
+        data-testid="card-children-tooltip-{card_id}"
+        role="tooltip"
+      >
+        <span class="font-semibold text-secondary text-[10px] uppercase tracking-wider border-b border-base pb-1">Subtasks</span>
+        <div class="flex flex-col gap-1">
+          <!-- Complete Subtask -->
+          <div class="flex justify-between items-center gap-2 py-0.5 border-b border-base/30 last:border-0">
+            <span class="truncate font-medium text-tertiary line-through flex-1">Design social banners</span>
+            <span class="bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 text-[9px] font-bold px-1 py-0.5 rounded uppercase tracking-wide">Done</span>
+          </div>
+          <!-- In-Progress Subtask -->
+          <div class="flex justify-between items-center gap-2 py-0.5 border-b border-base/30 last:border-0">
+            <span class="truncate font-medium text-primary flex-1">Write ad copy</span>
+            <span class="bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400 text-[9px] font-bold px-1 py-0.5 rounded uppercase tracking-wide">Doing</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card Body -->
+  <h3 id="card-title-{card_id}" class="text-sm font-medium text-primary line-clamp-2">
+    Implement Facebook Ads Integration
+  </h3>
+
+  <!-- Progress Bar (US1 & US2) -->
+  <!-- Renders dynamically if total subtasks > 0 -->
+  <div
+    class="w-full mt-1.5"
+    data-testid="card-progress-container-{card_id}"
+    aria-label="Subtask progress: 50%"
+  >
+    <div
+      class="h-1.5 w-full bg-neutral-200 dark:bg-neutral-800 rounded-full overflow-hidden"
+      role="progressbar"
+      aria-valuenow="50"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <div
+        class="h-full bg-accent-primary dark:bg-blue-500 rounded-full transition-all duration-300 ease-standard"
+        style="width: 50%;"
+        data-testid="card-progress-bar-{card_id}"
+      ></div>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+### 14.2 Decomposition Panel & Drawer Integration (US3)
+
+The details drawer integrates a robust, visual "Decomposition" panel enabling subtask list inspection, completion state toggling, and instant keyboard subtask creation.
+
+#### 14.2.1 Panel Container Structure
+- **Drawer Placement:** Embedded as a designated section inside the details side-drawer (`data-testid="card-decomposition-panel"`).
+- **Styling:** `flex flex-col gap-3 py-4 border-t border-base mt-4`.
+
+#### 14.2.2 Subtask List Item
+- **Layout:** `flex items-center justify-between gap-3 p-2 bg-elevated/30 dark:bg-slate-800/20 border border-base rounded-md hover:bg-elevated/60 transition-colors`.
+- **Completion Checkbox:** Checked if the subtask has a resolved status (where `column.is_done == true`). Toggling commits instant status transitions.
+- **Checkbox Styling:** `w-4 h-4 text-accent-primary border-base rounded focus:ring-accent-primary/20 transition-all cursor-pointer bg-surface dark:bg-slate-800`.
+- **Title Layout:** `text-xs text-primary font-medium truncate flex-1 select-all cursor-text`.
+  - **Completed state:** Add `line-through text-tertiary` when checked.
+- **Status Badge:** Identical formatting to workspace member role badges. Indicates the child's active Kanban column:
+  - **To Do:** `bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300`
+  - **Doing / In Progress:** `bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400`
+  - **Done:** `bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400`
+  - **Blocked:** `bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400`
+
+#### 14.2.3 Quick Subtask Input Field
+- **Strategic Intent:** Low-latency entry point to add subtasks without leaving the parent's detail drawer context.
+- **Input Styling:** `w-full px-3 py-1.5 text-xs bg-surface dark:bg-slate-800 border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all placeholder:text-tertiary text-primary`.
+- **Enter Action:** Pressing `Enter` commits creation payload, triggering `POST /api/workspaces/:workspace_id/cards` with `parent_id` parameter.
+
+#### 14.2.4 Decomposition Panel Markup Structure
+```html
+<section
+  class="flex flex-col gap-3 py-4 border-t border-base mt-4"
+  data-testid="card-decomposition-panel"
+  aria-labelledby="decomposition-title"
+>
+  <div class="flex items-center justify-between">
+    <h3 id="decomposition-title" class="text-xs font-semibold text-secondary tracking-wide uppercase select-none">
+      Decomposition
+    </h3>
+    <span class="text-[10px] font-bold bg-elevated dark:bg-slate-800 text-secondary rounded-full px-2 py-0.5 select-none" data-testid="decomposition-count">
+      1/2 Completed
+    </span>
+  </div>
+
+  <!-- Subtask List Container -->
+  <div class="flex flex-col gap-1.5" data-testid="decomposition-list" role="list">
+    <!-- List Item 1: Complete -->
+    <div
+      class="flex items-center justify-between gap-3 p-2 bg-elevated/30 dark:bg-slate-800/20 border border-base rounded-md hover:bg-elevated/60 transition-colors"
+      role="listitem"
+    >
+      <div class="flex items-center gap-2.5 min-w-0 flex-1">
+        <input
+          type="checkbox"
+          checked
+          class="w-4 h-4 text-accent-primary border-base rounded focus:ring-accent-primary/20 transition-all cursor-pointer bg-surface dark:bg-slate-800"
+          data-testid="subtask-checkbox-subtask_1"
+          aria-label="Mark subtask 'Design social banners' as incomplete"
+        />
+        <span class="text-xs text-tertiary font-medium truncate flex-1 line-through select-all cursor-text">
+          Design social banners
+        </span>
+      </div>
+      <span
+        class="bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase flex-shrink-0 select-none"
+        data-testid="subtask-status-subtask_1"
+      >
+        Done
+      </span>
+    </div>
+
+    <!-- List Item 2: Active -->
+    <div
+      class="flex items-center justify-between gap-3 p-2 bg-elevated/30 dark:bg-slate-800/20 border border-base rounded-md hover:bg-elevated/60 transition-colors"
+      role="listitem"
+    >
+      <div class="flex items-center gap-2.5 min-w-0 flex-1">
+        <input
+          type="checkbox"
+          class="w-4 h-4 text-accent-primary border-base rounded focus:ring-accent-primary/20 transition-all cursor-pointer bg-surface dark:bg-slate-800"
+          data-testid="subtask-checkbox-subtask_2"
+          aria-label="Mark subtask 'Write ad copy' as complete"
+        />
+        <span class="text-xs text-primary font-medium truncate flex-1 select-all cursor-text">
+          Write ad copy
+        </span>
+      </div>
+      <span
+        class="bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase flex-shrink-0 select-none"
+        data-testid="subtask-status-subtask_2"
+      >
+        Doing
+      </span>
+    </div>
+  </div>
+
+  <!-- Inline Quick Subtask Creation Form -->
+  <form
+    class="flex flex-col gap-2 mt-1.5"
+    data-testid="decomposition-add-form"
+    aria-label="Quick subtask creation"
+  >
+    <div class="relative flex items-center">
+      <input
+        type="text"
+        class="w-full px-3 py-1.5 pr-14 text-xs bg-surface dark:bg-slate-800 border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all placeholder:text-tertiary text-primary"
+        data-testid="decomposition-add-input"
+        placeholder="Add a subtask..."
+        aria-required="true"
+      />
+      <button
+        type="submit"
+        class="absolute right-1.5 top-1/2 transform -translate-y-1/2 bg-accent-primary hover:bg-accent-primary/95 text-white text-[10px] font-semibold py-0.5 px-2 rounded transition-all focus:outline-none focus:ring-1 focus:ring-accent-primary"
+        data-testid="decomposition-add-submit"
+      >
+        Add
+      </button>
+    </div>
+  </form>
+</section>
+```
+
+---
+
+### 14.3 Interactive System States
+
+Explicit requirements for loading overlays, verification warnings, validation errors, and empty UI states within the decomposition and hierarchy context.
+
+#### 14.3.1 Loading / Network Operations State
+- **When Active:** Occurs during subtask database creation/status toggles.
+- **Form Disabling:** The input field (`data-testid="decomposition-add-input"`) and submit button (`data-testid="decomposition-add-submit"`) receive `disabled` and `aria-disabled="true"` properties.
+- **Visuals:** The input field shifts to `opacity-60 bg-elevated/50 text-secondary cursor-not-allowed`.
+- **Button Spinner:** The text inside the action button is replaced with a processing spinner: `w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0`.
+- **Status Indicator Checkbox:** Temporarily disabled and set to `opacity-50 pointer-events-none` during status propagation updates.
+
+```html
+<!-- Input in Loading State -->
+<div class="relative flex items-center opacity-60 cursor-not-allowed">
+  <input
+    type="text"
+    disabled
+    aria-disabled="true"
+    class="w-full px-3 py-1.5 pr-14 text-xs bg-elevated border border-base rounded-md focus:outline-none text-secondary cursor-not-allowed"
+    data-testid="decomposition-add-input"
+    placeholder="Creating subtask..."
+    value="Write landing page code"
+  />
+  <button
+    disabled
+    aria-disabled="true"
+    class="absolute right-1.5 top-1/2 transform -translate-y-1/2 bg-accent-primary/60 text-white text-[10px] font-semibold py-0.5 px-2 rounded cursor-not-allowed flex items-center justify-center"
+    data-testid="decomposition-add-submit"
+  >
+    <svg class="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true"></svg>
+  </button>
+</div>
+```
+
+#### 14.3.2 Empty State Fallback
+- **When Active:** Occurs when a card contains zero hierarchical children.
+- **Strategic intent:** Encourages decomposition without cluttering the screen or raising cognitive friction.
+- **Visual styling:** Rendered in place of the subtask list container as a compact, dashed-border banner: `py-4 border border-dashed border-base rounded-md text-center bg-elevated/10`.
+- **Markup guidelines:**
+```html
+<div
+  class="py-4 px-3 border border-dashed border-base rounded-md text-center bg-elevated/10 select-none"
+  data-testid="decomposition-empty-state"
+  role="presentation"
+>
+  <svg class="w-6 h-6 text-tertiary mx-auto mb-1 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+  </svg>
+  <span class="block text-xs font-medium text-secondary">No subtasks created yet</span>
+  <span class="block text-[10px] text-tertiary mt-0.5">Add one below to start decomposing this task.</span>
+</div>
+```
+
+#### 14.3.3 Validation Error State
+- **When Active:** Triggered if empty values, duplicates, cyclic dependencies, or max depth (10 levels) policies are violated during creation.
+- **Micro-Interaction:** The entire decomposition section container (`data-testid="card-decomposition-panel"`) triggers a `300ms` horizontal shake animation (`animate-shake`).
+- **Error Banner:** A structured error banner mounts above the input area to guide the user.
+  - **Banner Styling:** `bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex gap-2 items-start mt-1 mb-2 animate-shake`.
+- **Input Border Highlight:** Input field border changes to validation red state: `border-status-blocked bg-status-blocked/5 focus:ring-2 focus:ring-status-blocked/20 focus:outline-none text-status-blocked placeholder:text-status-blocked/40`.
+
+```html
+<!-- Decomposition Section Shake container with Validation Banner -->
+<div class="flex flex-col gap-2 mt-1.5 animate-shake">
+  <div
+    class="bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-[11px] rounded-md p-2.5 flex gap-2 items-start"
+    data-testid="decomposition-error-banner"
+    role="alert"
+  >
+    <svg class="w-4 h-4 text-status-blocked flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <div class="flex-1 flex flex-col">
+      <span class="font-semibold">Subtask Creation Rejected</span>
+      <span>Cyclic relationship detected. Card cannot be its own subtask.</span>
+    </div>
+  </div>
+
+  <div class="relative flex items-center">
+    <input
+      type="text"
+      class="w-full px-3 py-1.5 border border-status-blocked bg-status-blocked/5 focus:ring-2 focus:ring-status-blocked/20 focus:outline-none rounded-md text-xs text-status-blocked placeholder:text-status-blocked/40"
+      data-testid="decomposition-add-input"
+      value="Circular Task Entry"
+      aria-invalid="true"
+    />
+  </div>
+</div>
+```
+
+---
+
+### 14.4 Accessibility, Navigation & Focus Loops
+
+To uphold the highest level of web accessibility (WCAG AA compliance) and minimize friction during board navigations, developers MUST implement these programmatic behaviors:
+
+#### 14.4.1 Parent Card Flash & Smooth Navigation Loop (FR-71)
+Upon clicking the Parent Badge on a card face, the UI must execute the following sequence:
+1. **Viewport Coordinate Alignment:** Locate the parent card element on the Kanban board and smoothly align it using:
+   `element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })`
+2. **Visual Flash Animation:** Instantly mount the 1.5s active flash CSS highlight on the parent card container:
+   `border-accent-primary animate-pulse shadow-glow` where `shadow-glow` is mapped to an active accent shadow ring:
+   ```css
+   box-shadow: 0 0 12px rgba(37, 99, 235, 0.6);
+   ```
+3. **Programmatic Focus Transfer:** Transfer active focus directly to the target parent container. Ensure the parent card container features an explicit `tabindex="0"` and receives `focus()`.
+
+#### 14.4.2 Details Drawer Focus Trapping Loop
+When a card details side-drawer opens containing the Decomposition section, the focus trap loop must accommodate subtask interactions dynamically:
+- **Loop Trapping Scope:** The active focus sequence handles forward (`Tab`) and backward (`Shift-Tab`) movement inside the drawer modal:
+  1. **Drawer Close Button**
+  2. **Subtask Completion Checkboxes** (`data-testid="subtask-checkbox-{id}"` - skipped if empty/no subtasks)
+  3. **Subtask Title Text Fields** (if editable)
+  4. **Quick Subtask Input Field** (`data-testid="decomposition-add-input"`)
+  5. **Resolve Block / Delete Actions** in the Drawer Footer
+- **Cycle wrapping:** Reaching the end of drawer footer actions loops back to the Drawer Close Button. Pressing `Escape` at any time instantly dismisses the drawer, returning focus to the card container trigger on the board.
+
+---
+
+### 14.5 Playwright Test Anchors & Accessibility Landmarks
+
+The developer must implement the following specific identifiers to satisfy the end-to-end integration and accessibility test suites:
+
+- **Parent Badge:** `data-testid="card-parent-badge-{card_id}"` | `role="link"` | `aria-label="Parent task: [Title]"`
+- **Children Badge:** `data-testid="card-children-badge-{card_id}"` | `aria-haspopup="true"` | `aria-expanded="true/false"`
+- **Children Tooltip Container:** `data-testid="card-children-tooltip-{card_id}"` | `role="tooltip"`
+- **Progress Container:** `data-testid="card-progress-container-{card_id}"` | `aria-label="Subtask progress: [X]%"`
+- **Progress Bar Fill:** `data-testid="card-progress-bar-{card_id}"` | `role="progressbar"` | `aria-valuenow="[X]"` | `aria-valuemin="0"` | `aria-valuemax="100"`
+- **Decomposition Panel Section:** `data-testid="card-decomposition-panel"` | `role="region"` | `aria-labelledby="decomposition-title"`
+- **Subtask Checkbox:** `data-testid="subtask-checkbox-{subtask_id}"` | `type="checkbox"` | `aria-label="Mark subtask [Title] as complete/incomplete"`
+- **Subtask Status Tag:** `data-testid="subtask-status-{subtask_id}"`
+- **Subtask Title Label:** `data-testid="subtask-title-{subtask_id}"`
+- **Subtask Quick Input:** `data-testid="decomposition-add-input"` | `type="text"` | `aria-required="true"`
+- **Subtask Quick Form:** `data-testid="decomposition-add-form"` | `role="form"` | `aria-label="Quick subtask creation"`
+- **Subtask Submit Button:** `data-testid="decomposition-add-submit"` | `role="button"`
+- **Decomposition Empty State:** `data-testid="decomposition-empty-state"`
+- **Decomposition Error Banner:** `data-testid="decomposition-error-banner"` | `role="alert"`
+
 ```
