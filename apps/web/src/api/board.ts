@@ -29,6 +29,9 @@ export interface CardData {
   current_swimlane_id: string;
   assigned_user_id: string | null;
   is_blocked: boolean;
+  blocked_by?: string | null;
+  blocked_at?: string | null;
+  blocked_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,7 +122,13 @@ export const moveCard = async (
       let ruleMessage = 'RULE_VIOLATION';
       try {
         const errData = await response.json();
-        if (errData.error) ruleMessage = `Rule violation: ${errData.error}`;
+        if (errData.error) {
+          if (errData.code === 'CARD_IS_BLOCKED') {
+            ruleMessage = 'CARD_IS_BLOCKED';
+          } else {
+            ruleMessage = `Rule violation: ${errData.error}`;
+          }
+        }
       } catch {
         // use default
       }
@@ -128,6 +137,44 @@ export const moveCard = async (
     throw new Error('Failed to move card');
   }
 
+  return response.json();
+};
+
+export interface BlockComment {
+  id: string;
+  card_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const fetchBlockComments = async (
+  workspaceId: string,
+  cardId: string
+): Promise<BlockComment[]> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards/${cardId}/block/comments`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch block comments');
+  }
+  return response.json();
+};
+
+export const createBlockComment = async (
+  workspaceId: string,
+  cardId: string,
+  content: string
+): Promise<BlockComment> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards/${cardId}/block/comments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create block comment');
+  }
   return response.json();
 };
 

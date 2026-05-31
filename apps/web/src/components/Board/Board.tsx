@@ -5,6 +5,7 @@ import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element
 import { Shield } from 'lucide-solid';
 import Card from '../Card/Card';
 import CardHistory from '../CardHistory/CardHistory';
+import BlockerDrawer from '../Drawer/BlockerDrawer';
 import { useAuth } from '../AuthProvider';
 
 interface BoardProps {
@@ -57,6 +58,7 @@ const Board: Component<BoardProps> = (props) => {
   const userId = () => auth?.currentUser()?.id;
 
   const [selectedCardId, setSelectedCardId] = createSignal<string | null>(null);
+  const [blockerDrawerCardId, setBlockerDrawerCardId] = createSignal<string | null>(null);
   const [shakingCardId, setShakingCardId] = createSignal<string | null>(null);
   const [toast, setToast] = createSignal<{ message: string; visible: boolean } | null>(null);
 
@@ -131,8 +133,13 @@ const Board: Component<BoardProps> = (props) => {
         console.error('[Mutation Error]', err.message, err);
         const isWip = err.message.includes('WIP limit') || err.message === 'WIP_LIMIT_EXCEEDED';
         const isRuleViolation = err.message.includes('Rule violation') || err.message === 'RULE_VIOLATION';
+        const isBlocked = err.message === 'CARD_IS_BLOCKED';
 
-        if (isWip) {
+        if (isBlocked) {
+          setShakingCardId(newData.cardId);
+          setTimeout(() => setShakingCardId(null), 500);
+          showToast('Card is blocked and cannot be moved!');
+        } else if (isWip) {
           setShakingCardId(newData.cardId);
           setTimeout(() => setShakingCardId(null), 300);
           showToast(err.message === 'WIP_LIMIT_EXCEEDED' ? 'WIP Limit Exceeded!' : err.message);
@@ -394,6 +401,7 @@ const Board: Component<BoardProps> = (props) => {
                                   fullId={card.id}
                                   title={card.title}
                                   isBlocked={card.is_blocked}
+                                  blockerReason={card.blocked_reason || undefined}
                                   isShaking={shakingCardId() === card.id}
                                   subtasksCount={completedSub()}
                                   totalSubtasks={totalSub()}
@@ -407,6 +415,7 @@ const Board: Component<BoardProps> = (props) => {
                                   onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
                                   onUnblock={() => unblockMutation.mutate(card.id)}
                                   onClick={() => setSelectedCardId(card.id)}
+                                  onOpenBlockerDrawer={() => setBlockerDrawerCardId(card.id)}
                                 />
                               );
                             }}
@@ -441,6 +450,26 @@ const Board: Component<BoardProps> = (props) => {
             />
           </div>
         </div>
+      </Show>
+
+      {/* Blocker Detail Drawer */}
+      <Show when={blockerDrawerCardId()}>
+        {(() => {
+          const card = query.data?.cards.find(c => c.id === blockerDrawerCardId());
+          return (
+            <Show when={card}>
+              <BlockerDrawer
+                workspaceId={props.workspaceId}
+                cardId={card!.id}
+                cardTitle={card!.title}
+                blockedAt={card!.blocked_at}
+                blockedBy={card!.blocked_by}
+                blockerReason={card!.blocked_reason}
+                onClose={() => setBlockerDrawerCardId(null)}
+              />
+            </Show>
+          );
+        })()}
       </Show>
 
       {/* Toast Notification for errors */}

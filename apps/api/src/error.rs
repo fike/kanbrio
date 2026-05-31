@@ -32,6 +32,9 @@ pub enum AppError {
     #[error("Rule violation: {0}")]
     RuleViolation(String),
 
+    #[error("Card is blocked: {0}")]
+    CardIsBlocked(String),
+
     #[error("Internal error: {0}")]
     Internal(String),
 
@@ -75,6 +78,11 @@ impl IntoResponse for AppError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 msg.clone(),
                 Some("RULE_VIOLATION".to_string()),
+            ),
+            AppError::CardIsBlocked(ref msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                msg.clone(),
+                Some("CARD_IS_BLOCKED".to_string()),
             ),
             AppError::Internal(ref msg) => {
                 tracing::error!("Internal error: {}", msg);

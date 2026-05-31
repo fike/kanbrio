@@ -118,3 +118,4 @@ Whenever creating or editing a Pull Request (PR) on GitHub, agents MUST ensure c
 2. **Explicit Closing Tags**:
    - For partial implementations, discovery reports, or technical planning PRs, include `Ref #<issue_number>` in the description.
    - For full implementations or bug-fix PRs, you **MUST** include `Closes #<issue_number>` or `Fixes #<issue_number>` at the bottom of the PR description to ensure the corresponding GitHub issue is automatically closed when a human reviews and merges the PR.
+3. **English-Only Policy**: All GitHub communications, including Pull Request titles, descriptions, commit messages, and issue comments/discussions, MUST be written exclusively in English.
