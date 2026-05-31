@@ -1,7 +1,7 @@
 use crate::AppError;
 use crate::models::audit::CardTransition;
 use crate::models::board::BoardState;
-use crate::models::card::{Card, ChecklistItem, MoveCard};
+use crate::models::card::{Card, ChecklistItem, CreateCard, MoveCard};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -14,6 +14,13 @@ use uuid::Uuid;
 pub struct Pagination {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCardPayload {
+    pub title: String,
+    pub current_column_id: Uuid,
+    pub current_swimlane_id: Uuid,
 }
 
 #[derive(Debug, Deserialize)]
@@ -436,4 +443,35 @@ pub async fn delete_checklist_item(
     }
 
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn create_card(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path(workspace_id): Path<Uuid>,
+    Json(payload): Json<CreateCardPayload>,
+) -> Result<(axum::http::StatusCode, Json<Card>), AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    let trimmed_title = payload.title.trim();
+    if trimmed_title.is_empty() || trimmed_title.len() > 255 {
+        return Err(AppError::BadRequest(
+            "Title must be between 1 and 255 characters".to_string(),
+        ));
+    }
+
+    let card = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: trimmed_title.to_string(),
+            current_column_id: payload.current_column_id,
+            current_swimlane_id: payload.current_swimlane_id,
+        },
+    )
+    .await?;
+
+    Ok((axum::http::StatusCode::CREATED, Json(card)))
 }

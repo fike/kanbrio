@@ -7,6 +7,7 @@ import Card from '../Card/Card';
 import CardHistory from '../CardHistory/CardHistory';
 import BlockerDrawer from '../Drawer/BlockerDrawer';
 import { useAuth } from '../AuthProvider';
+import { InlineCardForm } from './InlineCardForm';
 
 interface BoardProps {
   workspaceId: string;
@@ -61,12 +62,21 @@ const Board: Component<BoardProps> = (props) => {
   const [blockerDrawerCardId, setBlockerDrawerCardId] = createSignal<string | null>(null);
   const [shakingCardId, setShakingCardId] = createSignal<string | null>(null);
   const [toast, setToast] = createSignal<{ message: string; visible: boolean } | null>(null);
+  const [activeIntersection, setActiveIntersection] = createSignal<{ columnId: string; swimlaneId: string } | null>(null);
 
   const showToast = (message: string) => {
     setToast({ message, visible: true });
     setTimeout(() => {
       setToast((prev) => (prev ? { ...prev, visible: false } : null));
     }, 4000);
+  };
+
+  const handleCancelForm = (columnId: string, swimlaneId: string) => {
+    setActiveIntersection(null);
+    setTimeout(() => {
+      const triggerBtn = document.querySelector(`[data-testid="column-add-card-button-${columnId}-${swimlaneId}"]`) as HTMLButtonElement | null;
+      triggerBtn?.focus();
+    }, 50);
   };
 
   const query = createQuery(() => ({
@@ -386,40 +396,79 @@ const Board: Component<BoardProps> = (props) => {
                           workspaceId={props.workspaceId}
                           onDrop={(cardId) => mutation.mutate({ cardId, toColumnId: column.id, toSwimlaneId: swimlane.id })}
                         >
-                          <For each={query.data!.cards.filter(c => c.current_column_id === column.id && c.current_swimlane_id === swimlane.id)}>
-                            {(card) => {
-                              const subtasks = () => query.data!.cards.filter(c => c.parent_id === card.id);
-                              const totalSub = () => subtasks().length;
-                              const completedSub = () => subtasks().filter(c => {
-                                const col = query.data!.columns.find(col => col.id === c.current_column_id);
-                                return col?.is_done || false;
-                              }).length;
+                          <div class="flex flex-col gap-2 flex-1 overflow-y-auto">
+                            <For each={query.data!.cards.filter(c => c.current_column_id === column.id && c.current_swimlane_id === swimlane.id)}>
+                              {(card) => {
+                                const subtasks = () => query.data!.cards.filter(c => c.parent_id === card.id);
+                                const totalSub = () => subtasks().length;
+                                const completedSub = () => subtasks().filter(c => {
+                                  const col = query.data!.columns.find(col => col.id === c.current_column_id);
+                                  return col?.is_done || false;
+                                }).length;
 
-                              return (
-                                <Card
-                                  id={card.id.split('-')[0]}
-                                  fullId={card.id}
-                                  title={card.title}
-                                  isBlocked={card.is_blocked}
-                                  blockerReason={card.blocked_reason || undefined}
-                                  isShaking={shakingCardId() === card.id}
-                                  subtasksCount={completedSub()}
-                                  totalSubtasks={totalSub()}
-                                  checklists={query.data!.checklists.filter(c => c.card_id === card.id)}
-                                  onToggleChecklist={(checklistId) => {
-                                    const item = query.data!.checklists.find(c => c.id === checklistId);
-                                    if (item) {
-                                      toggleChecklistMutation.mutate({ cardId: card.id, checklistId, isCompleted: !item.is_completed });
-                                    }
-                                  }}
-                                  onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
-                                  onUnblock={() => unblockMutation.mutate(card.id)}
-                                  onClick={() => setSelectedCardId(card.id)}
-                                  onOpenBlockerDrawer={() => setBlockerDrawerCardId(card.id)}
-                                />
-                              );
-                            }}
-                          </For>
+                                return (
+                                  <Card
+                                    id={card.id.split('-')[0]}
+                                    fullId={card.id}
+                                    title={card.title}
+                                    isBlocked={card.is_blocked}
+                                    blockerReason={card.blocked_reason || undefined}
+                                    isShaking={shakingCardId() === card.id}
+                                    subtasksCount={completedSub()}
+                                    totalSubtasks={totalSub()}
+                                    checklists={query.data!.checklists.filter(c => c.card_id === card.id)}
+                                    onToggleChecklist={(checklistId) => {
+                                      const item = query.data!.checklists.find(c => c.id === checklistId);
+                                      if (item) {
+                                        toggleChecklistMutation.mutate({ cardId: card.id, checklistId, isCompleted: !item.is_completed });
+                                      }
+                                    }}
+                                    onBlock={(reason) => blockMutation.mutate({ cardId: card.id, reason })}
+                                    onUnblock={() => unblockMutation.mutate(card.id)}
+                                    onClick={() => setSelectedCardId(card.id)}
+                                    onOpenBlockerDrawer={() => setBlockerDrawerCardId(card.id)}
+                                  />
+                                );
+                              }}
+                            </For>
+                          </div>
+
+                          <Show
+                            when={
+                              activeIntersection()?.columnId === column.id &&
+                              activeIntersection()?.swimlaneId === swimlane.id
+                            }
+                            fallback={
+                              <button
+                                type="button"
+                                class="text-secondary font-medium hover:text-accent-primary flex items-center gap-1.5 p-2 rounded-md hover:bg-elevated transition-colors w-full justify-start border border-transparent focus:ring-2 focus:ring-accent-primary focus:outline-none shrink-0"
+                                data-testid={`column-add-card-button-${column.id}-${swimlane.id}`}
+                                aria-label="Add new card to column"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveIntersection({ columnId: column.id, swimlaneId: swimlane.id });
+                                }}
+                              >
+                                <svg class="w-4.5 h-4.5 text-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                </svg>
+                                <span>Add Card</span>
+                              </button>
+                            }
+                          >
+                            <div class="shrink-0">
+                              <InlineCardForm
+                                columnId={column.id}
+                                swimlaneId={swimlane.id}
+                                workspaceId={props.workspaceId}
+                                onSuccess={() => {
+                                  setActiveIntersection(null);
+                                }}
+                                onCancel={() => handleCancelForm(column.id, swimlane.id)}
+                                showToast={showToast}
+                              />
+                            </div>
+                          </Show>
                         </ColumnZone>
                       )}
                     </For>
