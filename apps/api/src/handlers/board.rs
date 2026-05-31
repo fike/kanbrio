@@ -1,7 +1,7 @@
 use crate::AppError;
 use crate::models::audit::CardTransition;
 use crate::models::board::BoardState;
-use crate::models::card::{Card, ChecklistItem, CreateCard, MoveCard};
+use crate::models::card::{Card, CardHierarchy, ChecklistItem, CreateCard, MoveCard};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -21,6 +21,7 @@ pub struct CreateCardPayload {
     pub title: String,
     pub current_column_id: Uuid,
     pub current_swimlane_id: Uuid,
+    pub parent_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -464,7 +465,7 @@ pub async fn create_card(
     let card = Card::create(
         &pool,
         CreateCard {
-            parent_id: None,
+            parent_id: payload.parent_id,
             workspace_id,
             title: trimmed_title.to_string(),
             current_column_id: payload.current_column_id,
@@ -474,4 +475,19 @@ pub async fn create_card(
     .await?;
 
     Ok((axum::http::StatusCode::CREATED, Json(card)))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn get_card_hierarchy(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<CardHierarchy>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    let hierarchy = Card::get_hierarchy(&pool, card_id).await?;
+    if hierarchy.card.workspace_id != workspace_id {
+        return Err(AppError::NotFound);
+    }
+    Ok(Json(hierarchy))
 }

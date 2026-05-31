@@ -317,6 +317,129 @@ impl Card {
         .fetch_one(&mut *tx)
         .await?;
 
+        // 4.5 Auto-propagation of parent status
+        if let Some(parent_id) = updated_card.parent_id {
+            let columns: Vec<(Uuid, i32, bool)> = sqlx::query_as(
+                "SELECT id, position, is_done FROM columns WHERE workspace_id = $1 ORDER BY position ASC"
+            )
+            .bind(data.workspace_id)
+            .fetch_all(&mut *tx)
+            .await?;
+
+            if let Some(backlog_col) = columns.first() {
+                let backlog_column_id = backlog_col.0;
+
+                let target_col_info: (bool,) =
+                    sqlx::query_as("SELECT is_done FROM columns WHERE id = $1")
+                        .bind(data.to_column_id)
+                        .fetch_one(&mut *tx)
+                        .await?;
+
+                let is_target_active = data.to_column_id != backlog_column_id && !target_col_info.0;
+
+                if is_target_active {
+                    let parent_card_opt = sqlx::query_as::<_, Card>(
+                        "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE",
+                    )
+                    .bind(parent_id)
+                    .bind(data.workspace_id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+
+                    if let Some(parent_card) = parent_card_opt {
+                        if parent_card.current_column_id == backlog_column_id {
+                            let mut wip_violated = false;
+
+                            let col_wip_limit: (Option<i32>,) =
+                                sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1")
+                                    .bind(data.to_column_id)
+                                    .fetch_one(&mut *tx)
+                                    .await?;
+
+                            if let Some(limit) = col_wip_limit.0 {
+                                let current_count: (i64,) = sqlx::query_as(
+                                    "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL"
+                                )
+                                .bind(data.to_column_id)
+                                .fetch_one(&mut *tx)
+                                .await?;
+
+                                if current_count.0 >= limit as i64 {
+                                    wip_violated = true;
+                                }
+                            }
+
+                            let lane_wip_limit: (Option<i32>,) =
+                                sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1")
+                                    .bind(data.to_swimlane_id)
+                                    .fetch_one(&mut *tx)
+                                    .await?;
+
+                            if let Some(limit) = lane_wip_limit.0 {
+                                if parent_card.current_swimlane_id != data.to_swimlane_id {
+                                    let current_count: (i64,) = sqlx::query_as(
+                                        "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL"
+                                    )
+                                    .bind(data.to_swimlane_id)
+                                    .fetch_one(&mut *tx)
+                                    .await?;
+
+                                    if current_count.0 >= limit as i64 {
+                                        wip_violated = true;
+                                    }
+                                }
+                            }
+
+                            if wip_violated {
+                                tracing::warn!(
+                                    parent_id = ?parent_card.id,
+                                    column_id = ?data.to_column_id,
+                                    swimlane_id = ?data.to_swimlane_id,
+                                    "WIP limit violation on parent auto-propagation. Skipping parent move."
+                                );
+                            } else {
+                                sqlx::query(
+                                    "UPDATE cards SET current_column_id = $1, current_swimlane_id = $2, updated_at = NOW() WHERE id = $3"
+                                )
+                                .bind(data.to_column_id)
+                                .bind(data.to_swimlane_id)
+                                .bind(parent_card.id)
+                                .execute(&mut *tx)
+                                .await?;
+
+                                sqlx::query(
+                                    r#"
+                                    INSERT INTO card_transitions (
+                                        card_id, user_id, transition_type,
+                                        from_column_id, to_column_id,
+                                        from_swimlane_id, to_swimlane_id,
+                                        payload
+                                    )
+                                    VALUES ($1, $2, 'system_auto_move', $3, $4, $5, $6, $7)
+                                    "#,
+                                )
+                                .bind(parent_card.id)
+                                .bind(data.user_id)
+                                .bind(parent_card.current_column_id)
+                                .bind(data.to_column_id)
+                                .bind(parent_card.current_swimlane_id)
+                                .bind(data.to_swimlane_id)
+                                .bind(serde_json::json!({
+                                    "from_column_id": parent_card.current_column_id,
+                                    "to_column_id": data.to_column_id,
+                                    "from_swimlane_id": parent_card.current_swimlane_id,
+                                    "to_swimlane_id": data.to_swimlane_id,
+                                    "triggered_by_card_id": updated_card.id
+                                }))
+                                .execute(&mut *tx)
+                                .await?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 5. Log transition (Issue #3)
         let transition_type = if is_override {
             "move_override".to_string()

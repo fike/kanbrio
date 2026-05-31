@@ -10,8 +10,8 @@ use crate::handlers::auth::{
 };
 use crate::handlers::board::{
     assign_card, block_card, create_block_comment, create_card, create_checklist_item,
-    delete_checklist_item, get_block_comments, get_board_state, get_card_history, move_card,
-    set_user_wip_limit, unblock_card, update_checklist_item,
+    delete_checklist_item, get_block_comments, get_board_state, get_card_hierarchy,
+    get_card_history, move_card, set_user_wip_limit, unblock_card, update_checklist_item,
 };
 use axum::{
     Router,
@@ -58,6 +58,10 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/history",
             get(get_card_history),
+        )
+        .route(
+            "/api/workspaces/:workspace_id/cards/:card_id/hierarchy",
+            get(get_card_hierarchy),
         )
         .route(
             "/api/workspaces/:workspace_id/members/:user_id/wip-limit",

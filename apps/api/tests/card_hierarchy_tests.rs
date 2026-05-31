@@ -85,3 +85,160 @@ async fn test_get_hierarchy_not_found(pool: sqlx::PgPool) -> anyhow::Result<()> 
     assert!(result.is_err());
     Ok(())
 }
+
+#[sqlx::test]
+async fn test_auto_propagation_basic(pool: sqlx::PgPool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations").run(&pool).await?;
+
+    let workspace_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
+    let backlog_col_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'Backlog', 0) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let active_col_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'Active', 1) RETURNING id",
+    )
+    .bind(workspace_id)
+    .fetch_one(&pool)
+    .await?;
+
+    let swimlane_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Test Lane', 0) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let parent = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Parent Card".to_string(),
+            current_column_id: backlog_col_id,
+            current_swimlane_id: swimlane_id,
+        },
+    )
+    .await?;
+
+    let child = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: Some(parent.id),
+            workspace_id,
+            title: "Child Card".to_string(),
+            current_column_id: backlog_col_id,
+            current_swimlane_id: swimlane_id,
+        },
+    )
+    .await?;
+
+    use kanbrio_api::models::card::MoveCard;
+    let updated_child = Card::move_to(
+        &pool,
+        MoveCard {
+            card_id: child.id,
+            workspace_id,
+            to_column_id: active_col_id,
+            to_swimlane_id: swimlane_id,
+            user_id: None,
+            override_rules: None,
+            override_reason: None,
+        },
+    )
+    .await?;
+
+    assert_eq!(updated_child.current_column_id, active_col_id);
+
+    let parent_updated = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1")
+        .bind(parent.id)
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(parent_updated.current_column_id, active_col_id);
+
+    let transition_type: String = sqlx::query_scalar(
+        "SELECT transition_type FROM card_transitions WHERE card_id = $1 AND transition_type = 'system_auto_move'"
+    )
+    .bind(parent.id)
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(transition_type, "system_auto_move");
+
+    Ok(())
+}
+
+#[sqlx::test]
+async fn test_auto_propagation_wip_safety(pool: sqlx::PgPool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations").run(&pool).await?;
+
+    let workspace_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO workspaces (id, name) VALUES ($1, 'Test Workspace')")
+        .bind(workspace_id)
+        .execute(&pool)
+        .await?;
+
+    let backlog_col_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO columns (workspace_id, title, position) VALUES ($1, 'Backlog', 0) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let active_col_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO columns (workspace_id, title, position, wip_limit) VALUES ($1, 'Active', 1, 1) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let swimlane_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Test Lane', 0) RETURNING id"
+    ).bind(workspace_id).fetch_one(&pool).await?;
+
+    let parent = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: None,
+            workspace_id,
+            title: "Parent Card".to_string(),
+            current_column_id: backlog_col_id,
+            current_swimlane_id: swimlane_id,
+        },
+    )
+    .await?;
+
+    let child = Card::create(
+        &pool,
+        CreateCard {
+            parent_id: Some(parent.id),
+            workspace_id,
+            title: "Child Card".to_string(),
+            current_column_id: backlog_col_id,
+            current_swimlane_id: swimlane_id,
+        },
+    )
+    .await?;
+
+    use kanbrio_api::models::card::MoveCard;
+    let updated_child = Card::move_to(
+        &pool,
+        MoveCard {
+            card_id: child.id,
+            workspace_id,
+            to_column_id: active_col_id,
+            to_swimlane_id: swimlane_id,
+            user_id: None,
+            override_rules: None,
+            override_reason: None,
+        },
+    )
+    .await?;
+
+    assert_eq!(updated_child.current_column_id, active_col_id);
+
+    let parent_updated = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1")
+        .bind(parent.id)
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(parent_updated.current_column_id, backlog_col_id);
+
+    Ok(())
+}
