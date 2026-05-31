@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,8 +12,45 @@ services:
       - POSTGRES_DB=kanbrio
     volumes:
       - .docker/pgdata:/var/lib/postgresql/data
+    networks:
+      - kanbrio-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  api:
+    build:
+      context: apps/api
+      dockerfile: Dockerfile
+    container_name: kanbrio-api
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres:5432/kanbrio
+      - HOST=0.0.0.0
+      - PORT=3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - kanbrio-network
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: kanbrio-web
+    ports:
+      - "5173:5173"
+    environment:
+      - API_URL=http://api:3000
+    depends_on:
+      - api
+    networks:
+      - kanbrio-network
+
+networks:
+  kanbrio-network:
+    driver: bridge

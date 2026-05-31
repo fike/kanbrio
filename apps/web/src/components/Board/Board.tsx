@@ -449,7 +449,7 @@ const Board: Component<BoardProps> = (props) => {
                                   setActiveIntersection({ columnId: column.id, swimlaneId: swimlane.id });
                                 }}
                               >
-                                <svg class="w-4.5 h-4.5 text-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <svg class="w-4 h-4 text-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                                 </svg>
                                 <span>Add Card</span>

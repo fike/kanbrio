@@ -1,7 +1,6 @@
 use dotenvy::dotenv;
 use kanbrio_api::create_app;
 use sqlx::postgres::PgPoolOptions;
-use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -18,7 +17,9 @@ async fn main() -> anyhow::Result<()> {
         .connect(&database_url)
         .await?;
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let addr = format!("{}:{}", host, port);
     tracing::info!("listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
