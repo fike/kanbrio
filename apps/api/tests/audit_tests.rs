@@ -112,6 +112,14 @@ async fn test_card_lifecycle_auditing(pool: sqlx::PgPool) -> anyhow::Result<()> 
     let col_id = col.0;
     let lane_id = lane.0;
 
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO users (id, email, name) VALUES ($1, 'auditor@test.com', 'Auditor User')",
+    )
+    .bind(user_id)
+    .execute(&pool)
+    .await?;
+
     // 2. Action: Create Card (Should log with payload)
     let card = Card::create(
         &pool,
@@ -133,11 +141,11 @@ async fn test_card_lifecycle_auditing(pool: sqlx::PgPool) -> anyhow::Result<()> 
 
     // 4. Action: Block Card
     updated_card
-        .block(&pool, "Blocked for testing".to_string())
+        .block(&pool, user_id, "Blocked for testing".to_string())
         .await?;
 
     // 5. Action: Unblock Card
-    updated_card.unblock(&pool).await?;
+    updated_card.unblock(&pool, user_id).await?;
 
     // 6. Action: Archive Card
     updated_card.archive(&pool).await?;

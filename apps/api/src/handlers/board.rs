@@ -130,7 +130,7 @@ pub async fn block_card(
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<BlockCardPayload>,
 ) -> Result<Json<Card>, AppError> {
-    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+    let (user, _) = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // 1. Fetch card with workspace isolation
     let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
@@ -143,8 +143,8 @@ pub async fn block_card(
             _ => AppError::Database(e),
         })?;
 
-    // 2. Perform block
-    let updated = card.block(&pool, payload.reason).await?;
+    // 2. Perform block passing user.id
+    let updated = card.block(&pool, user.id, payload.reason).await?;
     Ok(Json(updated))
 }
 
@@ -154,7 +154,7 @@ pub async fn unblock_card(
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Card>, AppError> {
-    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+    let (user, _) = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // 1. Fetch card with workspace isolation
     let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
@@ -167,9 +167,46 @@ pub async fn unblock_card(
             _ => AppError::Database(e),
         })?;
 
-    // 2. Perform unblock
-    let updated = card.unblock(&pool).await?;
+    // 2. Perform unblock passing user.id
+    let updated = card.unblock(&pool, user.id).await?;
     Ok(Json(updated))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn get_block_comments(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Vec<crate::models::card::BlockComment>>, AppError> {
+    let _ = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    // Verify card exists and belongs to the workspace
+    let card_exists: (bool,) =
+        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)")
+            .bind(card_id)
+            .bind(workspace_id)
+            .fetch_one(&pool)
+            .await?;
+
+    if !card_exists.0 {
+        return Err(AppError::NotFound);
+    }
+
+    let comments = Card::get_block_comments(&pool, card_id).await?;
+    Ok(Json(comments))
+}
+
+#[tracing::instrument(skip(pool, headers))]
+pub async fn create_block_comment(
+    State(pool): State<PgPool>,
+    headers: axum::http::header::HeaderMap,
+    Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<crate::models::card::BlockCommentPayload>,
+) -> Result<Json<crate::models::card::BlockComment>, AppError> {
+    let (user, _) = authenticate_member(&pool, &headers, workspace_id).await?;
+
+    let comment = Card::add_block_comment(&pool, card_id, user.id, payload.content).await?;
+    Ok(Json(comment))
 }
 
 #[tracing::instrument(skip(pool, headers))]

@@ -29,7 +29,7 @@ describe('Card Component', () => {
       <Card {...defaultProps} isBlocked={true} blockerReason="Waiting for API" />
     ));
 
-    expect(screen.getByText('Waiting for API')).toBeInTheDocument();
+    expect(screen.getByText('Blocked: Waiting for API')).toBeInTheDocument();
 
     const cardElement = container.firstChild as HTMLElement;
     expect(cardElement).toHaveClass('border-status-blocked');

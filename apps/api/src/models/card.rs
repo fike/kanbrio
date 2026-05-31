@@ -26,6 +26,9 @@ pub struct Card {
     pub current_swimlane_id: Uuid,
     pub assigned_user_id: Option<Uuid>,
     pub is_blocked: bool,
+    pub blocked_by: Option<Uuid>,
+    pub blocked_at: Option<DateTime<Utc>>,
+    pub blocked_reason: Option<String>,
     pub is_archived: bool,
     pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -46,6 +49,29 @@ pub struct CardHierarchy {
     #[serde(flatten)]
     pub card: Card,
     pub children: Vec<CardHierarchy>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+pub struct BlockComment {
+    pub id: Uuid,
+    pub card_id: Uuid,
+    pub user_id: Uuid,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BlockCardPayload {
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UnblockCardPayload {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BlockCommentPayload {
+    pub content: String,
 }
 
 use std::collections::HashMap;
@@ -79,6 +105,13 @@ impl Card {
             sqlx::Error::RowNotFound => crate::AppError::NotFound,
             _ => crate::AppError::Database(e),
         })?;
+
+        if current_card.is_blocked {
+            return Err(crate::AppError::CardIsBlocked(format!(
+                "Card '{}' is blocked and cannot be moved",
+                current_card.title
+            )));
+        }
 
         // 2. Validate target column/swimlane workspace alignment
         let target_col_ws: (Uuid,) =
@@ -484,21 +517,47 @@ impl Card {
     pub async fn block(
         &self,
         pool: &sqlx::PgPool,
+        blocked_by: Uuid,
         reason: String,
     ) -> Result<Self, crate::AppError> {
         let mut tx = pool.begin().await?;
 
+        // 1. SELECT FOR UPDATE to lock row
+        let current_card =
+            sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 FOR UPDATE")
+                .bind(self.id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| match e {
+                    sqlx::Error::RowNotFound => crate::AppError::NotFound,
+                    _ => crate::AppError::Database(e),
+                })?;
+
+        if current_card.is_blocked {
+            return Ok(current_card);
+        }
+
+        // 2. Perform block update
         let updated = sqlx::query_as::<_, Card>(
-            "UPDATE cards SET is_blocked = TRUE, updated_at = NOW() WHERE id = $1 RETURNING *",
+            r#"
+            UPDATE cards
+            SET is_blocked = TRUE, blocked_by = $1, blocked_at = NOW(), blocked_reason = $2, updated_at = NOW()
+            WHERE id = $3
+            RETURNING *
+            "#,
         )
+        .bind(blocked_by)
+        .bind(&reason)
         .bind(self.id)
         .fetch_one(&mut *tx)
         .await?;
 
+        // 3. Insert transition
         sqlx::query(
-            "INSERT INTO card_transitions (card_id, transition_type, payload) VALUES ($1, 'block', $2)"
+            "INSERT INTO card_transitions (card_id, user_id, transition_type, payload) VALUES ($1, $2, 'block', $3)"
         )
         .bind(self.id)
+        .bind(blocked_by)
         .bind(serde_json::json!({ "reason": reason }))
         .execute(&mut *tx)
         .await?;
@@ -508,25 +567,115 @@ impl Card {
     }
 
     #[tracing::instrument(skip(pool))]
-    pub async fn unblock(&self, pool: &sqlx::PgPool) -> Result<Self, crate::AppError> {
+    pub async fn unblock(
+        &self,
+        pool: &sqlx::PgPool,
+        unblocked_by: Uuid,
+    ) -> Result<Self, crate::AppError> {
         let mut tx = pool.begin().await?;
 
+        // 1. SELECT FOR UPDATE to lock row
+        let current_card =
+            sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 FOR UPDATE")
+                .bind(self.id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| match e {
+                    sqlx::Error::RowNotFound => crate::AppError::NotFound,
+                    _ => crate::AppError::Database(e),
+                })?;
+
+        if !current_card.is_blocked {
+            return Ok(current_card);
+        }
+
+        // 2. Perform unblock update
         let updated = sqlx::query_as::<_, Card>(
-            "UPDATE cards SET is_blocked = FALSE, updated_at = NOW() WHERE id = $1 RETURNING *",
+            r#"
+            UPDATE cards
+            SET is_blocked = FALSE, blocked_by = NULL, blocked_at = NULL, blocked_reason = NULL, updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            "#,
         )
         .bind(self.id)
         .fetch_one(&mut *tx)
         .await?;
 
+        // 3. Insert transition
         sqlx::query(
-            "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'unblock')",
+            "INSERT INTO card_transitions (card_id, user_id, transition_type) VALUES ($1, $2, 'unblock')",
         )
         .bind(self.id)
+        .bind(unblocked_by)
         .execute(&mut *tx)
         .await?;
 
         tx.commit().await?;
         Ok(updated)
+    }
+
+    #[tracing::instrument(skip(pool))]
+    pub async fn get_block_comments(
+        pool: &sqlx::PgPool,
+        card_id: Uuid,
+    ) -> Result<Vec<BlockComment>, crate::AppError> {
+        let comments = sqlx::query_as::<_, BlockComment>(
+            "SELECT * FROM card_block_comments WHERE card_id = $1 ORDER BY created_at ASC",
+        )
+        .bind(card_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(comments)
+    }
+
+    #[tracing::instrument(skip(pool))]
+    pub async fn add_block_comment(
+        pool: &sqlx::PgPool,
+        card_id: Uuid,
+        user_id: Uuid,
+        content: String,
+    ) -> Result<BlockComment, crate::AppError> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return Err(crate::AppError::BadRequest(
+                "Comment content cannot be empty".to_string(),
+            ));
+        }
+
+        let mut tx = pool.begin().await?;
+
+        let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 FOR UPDATE")
+            .bind(card_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::RowNotFound => crate::AppError::NotFound,
+                _ => crate::AppError::Database(e),
+            })?;
+
+        if !card.is_blocked {
+            return Err(crate::AppError::BadRequest(
+                "Cannot comment on an unblocked card".to_string(),
+            ));
+        }
+
+        let comment = sqlx::query_as::<_, BlockComment>(
+            r#"
+            INSERT INTO card_block_comments (card_id, user_id, content)
+            VALUES ($1, $2, $3)
+            RETURNING *
+            "#,
+        )
+        .bind(card_id)
+        .bind(user_id)
+        .bind(trimmed)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(comment)
     }
 
     #[tracing::instrument(skip(pool))]
@@ -592,7 +741,7 @@ impl Card {
                 AND NOT (c.id = ANY(h.path))  -- Security: Cycle detection
                 AND c.deleted_at IS NULL      -- SRE: Exclude deleted
             )
-            SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, assigned_user_id, is_blocked, is_archived, deleted_at, created_at, updated_at
+            SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, assigned_user_id, is_blocked, blocked_by, blocked_at, blocked_reason, is_archived, deleted_at, created_at, updated_at
             FROM hierarchy
             "#
         )

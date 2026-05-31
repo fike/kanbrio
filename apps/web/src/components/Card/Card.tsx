@@ -21,6 +21,7 @@ export interface CardProps {
   onBlock?: (reason: string) => void;
   onUnblock?: () => void;
   onToggleChecklist?: (checklistId: string) => void;
+  onOpenBlockerDrawer?: () => void;
 }
 
 const Card: Component<CardProps> = (props) => {
@@ -55,7 +56,7 @@ const Card: Component<CardProps> = (props) => {
       role="listitem"
       tabIndex={0}
       onClick={() => props.onClick?.()}
-      class="flex flex-col gap-1 p-3 bg-surface border rounded-md shadow-sm transition-all ease-standard duration-300 focus:ring-2 focus:ring-accent-primary focus:outline-none cursor-pointer group"
+      class="relative flex flex-col gap-1 p-3 bg-surface border rounded-md shadow-sm transition-all ease-standard duration-300 focus:ring-2 focus:ring-accent-primary focus:outline-none cursor-pointer group"
       classList={{
         'border-base': !props.isBlocked,
         'border-status-blocked bg-status-blocked/5 ring-1 ring-status-blocked': props.isBlocked,
@@ -64,6 +65,11 @@ const Card: Component<CardProps> = (props) => {
       }}
       aria-label={`Card: ${props.title}${props.isBlocked ? ', Blocked' : ''}`}
     >
+      {/* Left accent stripe for blocked cards */}
+      <Show when={props.isBlocked}>
+        <div class="w-1 h-full bg-status-blocked absolute left-0 top-0 rounded-l-md" />
+      </Show>
+
       {/* Header: Parent Breadcrumb & Actions */}
       <div class="flex justify-between items-center mb-0.5">
         <Show when={props.parentTitle}>
@@ -101,11 +107,24 @@ const Card: Component<CardProps> = (props) => {
         </div>
       </div>
 
-      {/* Blocker Reason */}
-      <Show when={props.isBlocked && props.blockerReason}>
-        <p class="text-xs text-status-blocked font-medium italic mt-1">
-          {props.blockerReason}
-        </p>
+      {/* Blocker Reason Badge */}
+      <Show when={props.isBlocked}>
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onOpenBlockerDrawer?.();
+          }}
+          data-testid="blocker-badge"
+          role="button"
+          tabIndex={0}
+          aria-label={`Card is blocked. Click to open block details. Reason: ${props.blockerReason || 'Reason'}`}
+          class="flex items-center gap-1.5 px-2 py-1 bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded font-medium mt-1 w-fit animate-pulse hover:bg-status-blocked/20 transition-all focus:ring-2 focus:ring-status-blocked/40 focus:outline-none"
+        >
+          <ShieldAlert size={12} class="shrink-0" />
+          <span class="truncate max-w-[180px]">
+            Blocked: {props.blockerReason || 'Reason'}
+          </span>
+        </div>
       </Show>
 
       {/* Checklist items container */}
@@ -154,12 +173,21 @@ const Card: Component<CardProps> = (props) => {
           </span>
         </div>
 
-        {/* Assignee Avatar Placeholder */}
-        <Show when={props.assigneeAvatar} fallback={<div class="w-5 h-5 rounded-full bg-elevated border border-base" />}>
+        {/* Assignee Avatar with highlights */}
+        <Show
+          when={props.assigneeAvatar}
+          fallback={
+            <div
+              class="w-5 h-5 rounded-full bg-elevated border border-base"
+              classList={{ 'ring-2 ring-status-blocked/40 animate-pulse border-status-blocked/60': props.isBlocked }}
+            />
+          }
+        >
           <img
             src={props.assigneeAvatar}
             alt="Assignee"
             class="w-5 h-5 rounded-full border border-base"
+            classList={{ 'ring-2 ring-status-blocked/40 animate-pulse border-status-blocked/60': props.isBlocked }}
           />
         </Show>
       </div>
