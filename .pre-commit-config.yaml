@@ -11,7 +11,7 @@ repos:
     hooks:
       - id: frontend-check
         name: Frontend Quality Gate
-        entry: bash -c "cd apps/web && npx tsc --noEmit && npm run lint"
+        entry: bash -c "cd apps/web && npx tsc --noEmit && npm run lint && npm run build"
         language: system
         files: ^apps/web/
         pass_filenames: false

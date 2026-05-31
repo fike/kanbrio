@@ -28,11 +28,13 @@ setup: db-up db-migrate db-seed ## Initial project setup (DB + Migrations + Seed
 
 # --- Development ---
 
-check: ## Run all local quality gates (lint, tsc, clippy, fmt)
+check: ## Run all local quality gates (lint, tsc, build, clippy, fmt)
 	@echo "Checking frontend types..."
 	cd apps/web && npx tsc --noEmit
 	@echo "Linting frontend..."
 	npm run lint -w apps/web
+	@echo "Building frontend..."
+	npm run build -w apps/web
 	@echo "Checking backend formatting..."
 	cd apps/api && cargo fmt --check
 	@echo "Running backend clippy..."

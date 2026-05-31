@@ -401,7 +401,7 @@ const Board: Component<BoardProps> = (props) => {
                                   fullId={card.id}
                                   title={card.title}
                                   isBlocked={card.is_blocked}
-                                  blockerReason={card.blocked_reason}
+                                  blockerReason={card.blocked_reason || undefined}
                                   isShaking={shakingCardId() === card.id}
                                   subtasksCount={completedSub()}
                                   totalSubtasks={totalSub()}
