@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,8 +12,24 @@ services:
       - POSTGRES_DB=kanbrio
     volumes:
       - .docker/pgdata:/var/lib/postgresql/data
+    networks:
+      - kanbrio-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  kanbrio-network:
+    driver: bridge
