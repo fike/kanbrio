@@ -1,6 +1,6 @@
 # Kanbrio - Local Development Makefile
 
-.PHONY: db-up db-down db-migrate db-seed setup dev test help
+.PHONY: db-up db-down db-migrate db-seed setup dev test help docker-up docker-down docker-logs docker-build
 
 export DATABASE_URL ?= postgres://postgres:password@localhost:5432/kanbrio # pragma: allowlist secret
 
@@ -13,6 +13,21 @@ db-up: ## Start the PostgreSQL database
 
 db-down: ## Stop the PostgreSQL database
 	docker-compose down
+
+docker-up: ## Start the entire container stack (web, api, postgres)
+	docker-compose up -d --build
+	@echo "Waiting for PostgreSQL to be ready..."
+	@until docker exec kanbrio-postgres pg_isready -U postgres; do sleep 1; done
+	@echo "Kanbrio is up! Access the web app at http://localhost:5173"
+
+docker-down: ## Stop the entire container stack and remove networks
+	docker-compose down
+
+docker-logs: ## Tail logs from all active containers
+	docker-compose logs -f
+
+docker-build: ## Rebuild container images for api and web
+	docker-compose build
 
 db-migrate: ## Run database migrations
 	@echo "Running migrations in apps/api..."
