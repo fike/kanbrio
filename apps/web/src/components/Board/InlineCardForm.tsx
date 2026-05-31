@@ -22,6 +22,8 @@ export const InlineCardForm: Component<InlineCardFormProps> = (props) => {
   let textareaRef!: HTMLTextAreaElement;
   let addBtnRef!: HTMLButtonElement;
   let cancelBtnRef!: HTMLButtonElement;
+  let focusTimeoutId: number | undefined;
+  let listenerTimeoutId: number | undefined;
 
   const triggerShake = () => {
     setIsShaking(true);
@@ -75,17 +77,19 @@ export const InlineCardForm: Component<InlineCardFormProps> = (props) => {
 
   onMount(() => {
     // Autofocus within 50ms
-    setTimeout(() => {
+    focusTimeoutId = setTimeout(() => {
       textareaRef?.focus();
     }, 20);
 
     // Register click-outside after current event loop to avoid immediate close
-    setTimeout(() => {
+    listenerTimeoutId = setTimeout(() => {
       document.addEventListener('pointerdown', clickOutside);
     }, 0);
   });
 
   onCleanup(() => {
+    if (focusTimeoutId) clearTimeout(focusTimeoutId);
+    if (listenerTimeoutId) clearTimeout(listenerTimeoutId);
     document.removeEventListener('pointerdown', clickOutside);
   });
 
