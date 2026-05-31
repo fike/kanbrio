@@ -71,7 +71,7 @@ test.describe('Card Lifecycle E2E', () => {
     await expect(card.locator('svg.text-status-blocked').first()).toBeVisible();
 
     // 2. Open History
-    await card.click();
+    await card.click({ position: { x: 5, y: 5 } });
     const sidebar = page.getByTestId('card-history-sidebar');
     await expect(sidebar).toBeVisible();
 
@@ -127,7 +127,7 @@ test.describe('Card Lifecycle E2E', () => {
     await expect(cardAfterReload.locator('svg.text-status-blocked').first()).toBeVisible();
 
     // 4. Verify history also survived
-    await cardAfterReload.click();
+    await cardAfterReload.click({ position: { x: 5, y: 5 } });
     const sidebar = page.getByTestId('card-history-sidebar');
     await expect(sidebar.getByTestId('history-event-block').first()).toBeVisible();
     await expect(sidebar.getByText('Reason: Persistence Test')).toBeVisible();
@@ -136,7 +136,9 @@ test.describe('Card Lifecycle E2E', () => {
   test('should handle rapid sequential actions (move then block)', async ({ page }) => {
     await page.goto('/');
     const card = page.locator('div[role="listitem"]').filter({ hasText: CARD_TITLE });
+    await expect(card).toBeVisible();
     const targetZone = page.getByTestId('column-zone-Doing').first();
+    await expect(targetZone).toBeVisible();
 
     // Ensure clean state: unblock if already blocked
     const initialLabel = await card.getAttribute('aria-label');
@@ -166,7 +168,7 @@ test.describe('Card Lifecycle E2E', () => {
     // 3. Verify both states are captured
     await expect(card).toHaveAttribute('aria-label', `Card: ${CARD_TITLE}, Blocked`);
 
-    await card.click();
+    await card.click({ position: { x: 5, y: 5 } });
     const sidebar = page.getByTestId('card-history-sidebar');
 
     // Both events should be visible in the timeline

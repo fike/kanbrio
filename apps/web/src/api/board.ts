@@ -284,3 +284,58 @@ export const deleteChecklistItem = async (
     throw new Error('Failed to delete checklist item');
   }
 };
+
+export const createCard = async (
+  workspaceId: string,
+  title: string,
+  currentColumnId: string,
+  currentSwimlaneId: string
+): Promise<CardData> => {
+  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/cards`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title,
+      current_column_id: currentColumnId,
+      current_swimlane_id: currentSwimlaneId,
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 409) {
+      let wipMessage = 'WIP_LIMIT_EXCEEDED';
+      try {
+        const errData = await response.json();
+        if (errData.error) wipMessage = errData.error;
+      } catch {
+        // use default
+      }
+      throw new Error(wipMessage);
+    }
+    if (response.status === 422) {
+      let ruleMessage = 'RULE_VIOLATION';
+      try {
+        const errData = await response.json();
+        if (errData.error) ruleMessage = errData.error;
+      } catch {
+        // use default
+      }
+      throw new Error(ruleMessage);
+    }
+    if (response.status === 400) {
+      let badRequestMessage = 'BAD_REQUEST';
+      try {
+        const errData = await response.json();
+        if (errData.error) badRequestMessage = errData.error;
+      } catch {
+        // use default
+      }
+      throw new Error(badRequestMessage);
+    }
+    throw new Error('Failed to create card');
+  }
+
+  return response.json();
+};

@@ -591,4 +591,227 @@ If a moved card triggers a backend policy violation (e.g. `409 Conflict` WIP exc
     <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
   </button>
 </div>
+
+---
+
+## 13. Component Styling Guidelines: Card Creation Flow
+
+This section details the visual guidelines, Tailwind classes, interactive system states, accessibility (a11y) guardrails, and Playwright test anchors for the Inline Card Creation Flow (v0.6).
+
+### 13.1 Trigger Button Layout & States
+A subtle toggle button is rendered at the bottom of each `ColumnZone` when the creation form is inactive. It must blend harmoniously with the dense, low cognitive load aesthetic.
+
+- **Trigger Button Styling:** `text-secondary font-medium hover:text-accent-primary flex items-center gap-1.5 p-2 rounded-md hover:bg-elevated transition-colors w-full justify-start border border-transparent focus:ring-2 focus:ring-accent-primary focus:outline-none`
+- **Playwright Test Anchor:** `data-testid="column-add-card-button-{column_id}-{swimlane_id}"`
+
+#### Tailwind HTML Markup Structure
+```html
+<button
+  type="button"
+  class="text-secondary font-medium hover:text-accent-primary flex items-center gap-1.5 p-2 rounded-md hover:bg-elevated transition-colors w-full justify-start border border-transparent focus:ring-2 focus:ring-accent-primary focus:outline-none"
+  data-testid="column-add-card-button-column_1-swimlane_none"
+  aria-label="Add new card to column"
+>
+  <svg class="w-4.5 h-4.5 text-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+  </svg>
+  <span>Add Card</span>
+</button>
+```
+
+---
+
+### 13.2 Inline Card Form Layout
+When activated, the trigger button is unmounted and replaced by an inline card-shaped interactive area.
+
+- **Form Container Styling:** `p-3 bg-surface border border-base rounded-lg shadow-sm flex flex-col gap-2 transition-all duration-300 ease-standard`
+- **Playwright Test Anchor:** `data-testid="inline-card-form-{column_id}-{swimlane_id}"`
+- **Semantic ARIA Attributes:** Must declare `role="form"` and `aria-label="Add new card"`.
+
+---
+
+### 13.3 Input Textarea & Action Row
+The card content input utilizes a compact textarea paired with a aligned secondary-primary action row at the bottom right.
+
+- **Textarea Styling:** `w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all placeholder:text-tertiary text-primary resize-none`
+  - Rows: Set explicitly to `2` to maintain data-density constraints.
+- **Add (Submit) Button Styling:** `bg-accent-primary text-white font-semibold py-1 px-3 rounded-md hover:bg-accent-primary/95 text-xs focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all`
+- **Cancel Button Styling:** `text-secondary font-semibold hover:bg-elevated px-3 py-1 rounded-md text-xs focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all`
+- **Playwright Test Anchors:**
+  - Textarea: `data-testid="inline-card-title-input"`
+  - Submit Button: `data-testid="inline-card-submit"`
+  - Cancel Button: `data-testid="inline-card-cancel"`
+
+#### Tailwind HTML Markup Structure (Active State)
+```html
+<div
+  class="p-3 bg-surface border border-base rounded-lg shadow-sm flex flex-col gap-2 transition-all duration-300 ease-standard"
+  data-testid="inline-card-form-column_1-swimlane_none"
+  role="form"
+  aria-label="Add new card"
+>
+  <textarea
+    class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all placeholder:text-tertiary text-primary resize-none"
+    data-testid="inline-card-title-input"
+    placeholder="Enter a title for this card..."
+    rows="2"
+    aria-required="true"
+  ></textarea>
+
+  <div class="flex items-center justify-end gap-2">
+    <button
+      type="button"
+      class="text-secondary font-semibold hover:bg-elevated px-3 py-1 rounded-md text-xs focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all"
+      data-testid="inline-card-cancel"
+    >
+      Cancel
+    </button>
+    <button
+      type="submit"
+      class="bg-accent-primary text-white font-semibold py-1 px-3 rounded-md hover:bg-accent-primary/95 text-xs focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all"
+      data-testid="inline-card-submit"
+    >
+      Add
+    </button>
+  </div>
+</div>
+```
+
+---
+
+### 13.4 System & Validation States
+
+#### 13.4.1 Loading & Submission State
+During card insertion operations, the interactive fields are disabled, and a visible processing spinner replaces static submission text to preserve flow state.
+
+- **Interactive Disabling:** The input textarea, Add button, and Cancel button must immediately accept `disabled` properties and receive `aria-disabled="true"`.
+- **Spinner Graphic:** A white spinner icon must animate inside the primary action button: `w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0`.
+- **Layout styling shifts:** Form elements receive `opacity-60 bg-elevated/50 text-secondary cursor-not-allowed`.
+
+```html
+<div
+  class="p-3 bg-surface border border-base rounded-lg shadow-sm flex flex-col gap-2 opacity-60 cursor-not-allowed select-none transition-all duration-300 ease-standard"
+  data-testid="inline-card-form-column_1-swimlane_none"
+  role="form"
+  aria-label="Add new card"
+>
+  <textarea
+    class="w-full px-3 py-2 text-sm bg-elevated/50 border border-base rounded-md focus:outline-none transition-all placeholder:text-tertiary text-secondary resize-none cursor-not-allowed"
+    data-testid="inline-card-title-input"
+    placeholder="Enter a title for this card..."
+    rows="2"
+    disabled
+    aria-disabled="true"
+    aria-required="true"
+  >Creating API routes</textarea>
+
+  <div class="flex items-center justify-end gap-2">
+    <button
+      type="button"
+      class="text-secondary font-semibold px-3 py-1 rounded-md text-xs cursor-not-allowed opacity-50"
+      data-testid="inline-card-cancel"
+      disabled
+      aria-disabled="true"
+    >
+      Cancel
+    </button>
+    <button
+      type="submit"
+      class="bg-accent-primary text-white font-semibold py-1 px-3 rounded-md text-xs cursor-not-allowed flex items-center gap-1.5 justify-center"
+      data-testid="inline-card-submit"
+      disabled
+      aria-disabled="true"
+    >
+      <svg class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24" aria-hidden="true"></svg>
+      <span>Adding...</span>
+    </button>
+  </div>
+</div>
+```
+
+#### 13.4.2 Validation Error State
+If a validation rule is violated (e.g. empty title or exceeding characters limit), the form alerts the user with dynamic haptic-feel animation and structured feedback.
+
+- **Horizontal Shake:** The outer form wrapper executes a `300ms` horizontal shake animation (`animate-shake`) to visually signal failure.
+- **Error message banner:** A banner is rendered at the top of the form area.
+  - **Banner Styling:** `bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex gap-2 items-start`
+  - **Playwright Test Anchor:** `data-testid="inline-card-error"`
+- **Textarea Red Border:** The input border changes to validation red state: `border-status-blocked bg-status-blocked/5 focus:ring-status-blocked/20 text-status-blocked placeholder:text-status-blocked/40`.
+
+```html
+<div
+  class="p-3 bg-surface border border-status-blocked bg-status-blocked/5 rounded-lg shadow-sm flex flex-col gap-2 animate-shake duration-300 ease-standard"
+  data-testid="inline-card-form-column_1-swimlane_none"
+  role="form"
+  aria-label="Add new card"
+>
+  <!-- Error Message Banner -->
+  <div
+    class="bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex gap-2 items-start"
+    data-testid="inline-card-error"
+    role="alert"
+  >
+    <svg class="w-4 h-4 text-status-blocked flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <div class="flex-1 flex flex-col gap-0.5">
+      <span class="font-semibold">Validation Error</span>
+      <span>Card title cannot be empty.</span>
+    </div>
+  </div>
+
+  <textarea
+    class="w-full px-3 py-2 text-sm bg-surface border border-status-blocked/50 focus:border-status-blocked focus:ring-2 focus:ring-status-blocked/20 focus:outline-none transition-all placeholder:text-status-blocked/40 text-status-blocked resize-none"
+    data-testid="inline-card-title-input"
+    placeholder="Enter a title for this card..."
+    rows="2"
+    aria-invalid="true"
+    aria-required="true"
+  ></textarea>
+
+  <div class="flex items-center justify-end gap-2">
+    <button
+      type="button"
+      class="text-secondary font-semibold hover:bg-elevated px-3 py-1 rounded-md text-xs focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all"
+      data-testid="inline-card-cancel"
+    >
+      Cancel
+    </button>
+    <button
+      type="submit"
+      class="bg-accent-primary text-white font-semibold py-1 px-3 rounded-md hover:bg-accent-primary/95 text-xs focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all"
+      data-testid="inline-card-submit"
+    >
+      Add
+    </button>
+  </div>
+</div>
+```
+
+---
+
+### 13.5 Accessibility & Focus Rules
+To uphold the highest level of web accessibility (WCAG AA compliant focus behavior), the developer MUST programmatically implement the following:
+
+1. **Immediate Focus On Mount:** Once the inline card form mounts, the title input textarea must programmatically receive focus **within 50ms**.
+2. **Keyboard Focus Trap:** Focus tab orders must be strictly trapped inside the card creation form while active.
+   - **Forward loop:** `Textarea -> Add Button -> Cancel Button -> Textarea`
+   - **Reverse loop (Shift-Tab):** `Textarea -> Cancel Button -> Add Button -> Textarea`
+3. **Escape Key & Blur Click-Outside Dismissal:**
+   - Pressing the `Escape` key while focus is within the form must trigger a dismissal (unmounting the form).
+   - Clicking anywhere outside the active form container must also dismiss the form.
+   - Upon dismissal, the trigger button (+ Add Card) is re-rendered and **instantly receives programmatic focus** to maintain keyboard positioning.
+
+---
+
+### 13.6 Playwright Test Anchors & Accessibility Landmarks (TDD & ARIA Constraints)
+The developer must implement the following specific identifiers to satisfy the end-to-end integration test suites:
+
+- **Trigger Button:** `data-testid="column-add-card-button-{column_id}-{swimlane_id}"` | `role="button"` | `aria-label="Add new card to column"`
+- **Form Wrapper:** `data-testid="inline-card-form-{column_id}-{swimlane_id}"` | `role="form"` | `aria-label="Add new card"`
+- **Input Textarea:** `data-testid="inline-card-title-input"` | `aria-required="true"` | `aria-invalid="true/false"`
+- **Submit (Add) Button:** `data-testid="inline-card-submit"` | `role="button"`
+- **Cancel Button:** `data-testid="inline-card-cancel"` | `role="button"`
+- **Error Banner:** `data-testid="inline-card-error"` | `role="alert"`
+
 ```
