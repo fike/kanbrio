@@ -16,8 +16,7 @@ pub fn feature_disabled_response(feature: Feature) -> Response<Body> {
         "feature": feature.key(),
     });
 
-    (StatusCode::FORBIDDEN, Json(payload))
-        .into_response()
+    (StatusCode::FORBIDDEN, Json(payload)).into_response()
 }
 
 /// Async middleware handler that gates requests behind a feature flag.

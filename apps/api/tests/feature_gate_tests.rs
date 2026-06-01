@@ -30,19 +30,13 @@ async fn feature_gate_should_return_403_when_feature_disabled() {
     let app = Router::new()
         .route("/test", get(handler_ok))
         .with_state(AppState {
-            flags: FeatureFlags {
-                board_cards: false,
-            },
+            flags: FeatureFlags { board_cards: false },
         })
         .layer(axum::middleware::from_fn_with_state(
             AppState {
-                flags: FeatureFlags {
-                    board_cards: false,
-                },
+                flags: FeatureFlags { board_cards: false },
             },
-            move |st: State<AppState>,
-                  req: Request<Body>,
-                  next: Next| async move {
+            move |st: State<AppState>, req: Request<Body>, next: Next| async move {
                 let flags = FeatureFlags::from_ref(&st.0);
 
                 if !flags.is_enabled(Feature::BoardCards) {
@@ -55,10 +49,7 @@ async fn feature_gate_should_return_403_when_feature_disabled() {
             },
         ));
 
-    let req = Request::builder()
-        .uri("/test")
-        .body(Body::empty())
-        .unwrap();
+    let req = Request::builder().uri("/test").body(Body::empty()).unwrap();
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
@@ -94,19 +85,13 @@ async fn feature_gate_should_pass_through_when_feature_enabled() {
     let app = Router::new()
         .route("/test", get(handler_ok))
         .with_state(AppState {
-            flags: FeatureFlags {
-                board_cards: true,
-            },
+            flags: FeatureFlags { board_cards: true },
         })
         .layer(axum::middleware::from_fn_with_state(
             AppState {
-                flags: FeatureFlags {
-                    board_cards: true,
-                },
+                flags: FeatureFlags { board_cards: true },
             },
-            move |st: State<AppState>,
-                  req: Request<Body>,
-                  next: Next| async move {
+            move |st: State<AppState>, req: Request<Body>, next: Next| async move {
                 let flags = FeatureFlags::from_ref(&st.0);
 
                 if !flags.is_enabled(Feature::BoardCards) {
@@ -119,10 +104,7 @@ async fn feature_gate_should_pass_through_when_feature_enabled() {
             },
         ));
 
-    let req = Request::builder()
-        .uri("/test")
-        .body(Body::empty())
-        .unwrap();
+    let req = Request::builder().uri("/test").body(Body::empty()).unwrap();
 
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
