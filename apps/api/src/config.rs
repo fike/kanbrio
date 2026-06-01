@@ -61,9 +61,15 @@ fn parse_bool(value: &str) -> Option<bool> {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::Mutex;
+
+    /// Global mutex to serialize tests that manipulate environment variables.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     /// Helper to set an env var, run a closure, then restore the previous value.
+    /// Uses a global mutex to prevent race conditions in parallel test execution.
     fn with_env_var(name: &str, value: &str, f: impl FnOnce()) {
+        let _guard = ENV_MUTEX.lock().unwrap();
         let previous = env::var(name).ok();
         unsafe { env::set_var(name, value) };
         f();
@@ -74,6 +80,7 @@ mod tests {
     }
 
     fn without_env_var(name: &str, f: impl FnOnce()) {
+        let _guard = ENV_MUTEX.lock().unwrap();
         let previous = env::var(name).ok();
         unsafe { env::remove_var(name) };
         f();
