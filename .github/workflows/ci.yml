@@ -41,13 +41,17 @@ jobs:
       - name: Check Formatting
         run: cargo fmt --all -- --check
         working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://postgres:password@localhost:5432/kanbrio_test # pragma: allowlist secret
 
       - name: Clippy
         run: cargo clippy -- -D warnings
         working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://postgres:password@localhost:5432/kanbrio_test # pragma: allowlist secret
 
       - name: Run Tests
-        run: cargo test
+        run: cargo test --all-targets
         working-directory: apps/api
         env:
           DATABASE_URL: postgres://postgres:password@localhost:5432/kanbrio_test # pragma: allowlist secret
