@@ -40,9 +40,8 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
-        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgres://postgres:password@localhost:5432/kanbrio".to_string() // pragma: allowlist secret
-        });
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/kanbrio".to_string()); // pragma: allowlist secret
         let database_url = DatabaseUrl::new(&database_url)?;
 
         let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
@@ -143,7 +142,6 @@ mod tests {
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     /// Helper to set an env var, run a closure, then restore the previous value.
-    /// Uses a global mutex to prevent race conditions in parallel test execution.
     fn with_env_var(name: &str, value: &str, f: impl FnOnce()) {
         let _guard = ENV_MUTEX.lock().unwrap();
         let previous = env::var(name).ok();
