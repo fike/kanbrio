@@ -90,11 +90,11 @@ async fn authenticate_member(
     let user =
         crate::services::session_service::SessionService::validate_session(pool, &token).await?;
 
-    let member: (String,) = sqlx::query_as(
+    let member: (String,) = sqlx::query!(
         "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        workspace_id,
+        user.id
     )
-    .bind(workspace_id)
-    .bind(user.id)
     .fetch_one(pool)
     .await
     .map_err(|_| AppError::Forbidden)?;
@@ -140,15 +140,18 @@ pub async fn block_card(
     let (user, _) = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // 1. Fetch card with workspace isolation
-    let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
-        .bind(card_id)
-        .bind(workspace_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound,
-            _ => AppError::Database(e),
-        })?;
+    let card = sqlx::query_as!(
+        Card,
+        "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2",
+        card_id,
+        workspace_id
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound,
+        _ => AppError::Database(e),
+    })?;
 
     // 2. Perform block passing user.id
     let updated = card.block(&pool, user.id, payload.reason).await?;
@@ -164,15 +167,18 @@ pub async fn unblock_card(
     let (user, _) = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // 1. Fetch card with workspace isolation
-    let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 AND workspace_id = $2")
-        .bind(card_id)
-        .bind(workspace_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound,
-            _ => AppError::Database(e),
-        })?;
+    let card = sqlx::query_as!(
+        Card,
+        "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2",
+        card_id,
+        workspace_id
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound,
+        _ => AppError::Database(e),
+    })?;
 
     // 2. Perform unblock passing user.id
     let updated = card.unblock(&pool, user.id).await?;
@@ -188,12 +194,13 @@ pub async fn get_block_comments(
     let _ = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // Verify card exists and belongs to the workspace
-    let card_exists: (bool,) =
-        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)")
-            .bind(card_id)
-            .bind(workspace_id)
-            .fetch_one(&pool)
-            .await?;
+    let card_exists: (bool,) = sqlx::query!(
+        "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)",
+        card_id,
+        workspace_id
+    )
+    .fetch_one(&pool)
+    .await?;
 
     if !card_exists.0 {
         return Err(AppError::NotFound);
@@ -267,12 +274,12 @@ pub async fn set_user_wip_limit(
     }
 
     // Update WIP limit
-    sqlx::query(
-        "UPDATE workspace_members SET wip_limit = $1, updated_at = NOW() WHERE workspace_id = $2 AND user_id = $3"
+    sqlx::query!(
+        "UPDATE workspace_members SET wip_limit = $1, updated_at = NOW() WHERE workspace_id = $2 AND user_id = $3",
+        payload.wip_limit,
+        workspace_id,
+        target_user_id
     )
-    .bind(payload.wip_limit)
-    .bind(workspace_id)
-    .bind(target_user_id)
     .execute(&pool)
     .await?;
 
@@ -315,27 +322,29 @@ pub async fn create_checklist_item(
     let _ = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // Verify card exists in workspace
-    let card_exists: (bool,) =
-        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)")
-            .bind(card_id)
-            .bind(workspace_id)
-            .fetch_one(&pool)
-            .await?;
+    let card_exists: (bool,) = sqlx::query!(
+        "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)",
+        card_id,
+        workspace_id
+    )
+    .fetch_one(&pool)
+    .await?;
 
     if !card_exists.0 {
         return Err(AppError::NotFound);
     }
 
-    let item = sqlx::query_as::<_, ChecklistItem>(
+    let item = sqlx::query_as!(
+        ChecklistItem,
         r#"
         INSERT INTO card_checklists (card_id, title, position)
         VALUES ($1, $2, $3)
         RETURNING *
         "#,
+        card_id,
+        payload.title,
+        payload.position
     )
-    .bind(card_id)
-    .bind(payload.title)
-    .bind(payload.position)
     .fetch_one(&pool)
     .await?;
 
@@ -352,7 +361,7 @@ pub async fn update_checklist_item(
     let _ = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // Verify item belongs to card, and card belongs to workspace
-    let item_exists: (bool,) = sqlx::query_as(
+    let item_exists: (bool,) = sqlx::query!(
         r#"
         SELECT EXISTS(
             SELECT 1 FROM card_checklists c
@@ -360,10 +369,10 @@ pub async fn update_checklist_item(
             WHERE c.id = $1 AND c.card_id = $2 AND card.workspace_id = $3
         )
         "#,
+        checklist_id,
+        card_id,
+        workspace_id
     )
-    .bind(checklist_id)
-    .bind(card_id)
-    .bind(workspace_id)
     .fetch_one(&pool)
     .await?;
 
@@ -371,11 +380,13 @@ pub async fn update_checklist_item(
         return Err(AppError::NotFound);
     }
 
-    let current_item =
-        sqlx::query_as::<_, ChecklistItem>("SELECT * FROM card_checklists WHERE id = $1")
-            .bind(checklist_id)
-            .fetch_one(&pool)
-            .await?;
+    let current_item = sqlx::query_as!(
+        ChecklistItem,
+        "SELECT * FROM card_checklists WHERE id = $1",
+        checklist_id
+    )
+    .fetch_one(&pool)
+    .await?;
 
     let (is_completed, completed_by, completed_at) = match payload.is_completed {
         Some(true) => {
@@ -394,20 +405,21 @@ pub async fn update_checklist_item(
     let title = payload.title.unwrap_or(current_item.title);
     let position = payload.position.unwrap_or(current_item.position);
 
-    let updated = sqlx::query_as::<_, ChecklistItem>(
+    let updated = sqlx::query_as!(
+        ChecklistItem,
         r#"
         UPDATE card_checklists
         SET title = $1, is_completed = $2, position = $3, completed_by = $4, completed_at = $5, updated_at = NOW()
         WHERE id = $6
         RETURNING *
-        "#
+        "#,
+        title,
+        is_completed,
+        position,
+        completed_by,
+        completed_at,
+        checklist_id
     )
-    .bind(title)
-    .bind(is_completed)
-    .bind(position)
-    .bind(completed_by)
-    .bind(completed_at)
-    .bind(checklist_id)
     .fetch_one(&pool)
     .await?;
 
@@ -422,7 +434,7 @@ pub async fn delete_checklist_item(
 ) -> Result<axum::http::StatusCode, AppError> {
     let _ = authenticate_member(&pool, &headers, workspace_id).await?;
 
-    let deleted = sqlx::query(
+    let deleted = sqlx::query!(
         r#"
         DELETE FROM card_checklists c
         USING cards card
@@ -431,10 +443,10 @@ pub async fn delete_checklist_item(
           AND c.card_id = $2
           AND card.workspace_id = $3
         "#,
+        checklist_id,
+        card_id,
+        workspace_id
     )
-    .bind(checklist_id)
-    .bind(card_id)
-    .bind(workspace_id)
     .execute(&pool)
     .await?;
 

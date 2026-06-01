@@ -11,14 +11,15 @@ impl SessionService {
         let token = Uuid::new_v4().to_string();
         let expires_at = Utc::now() + Duration::days(1);
 
-        let session = sqlx::query_as::<_, UserSession>(
+        let session = sqlx::query_as!(
+            UserSession,
             "INSERT INTO user_sessions (user_id, session_token, expires_at) \
              VALUES ($1, $2, $3) \
              RETURNING *",
+            user_id,
+            token,
+            expires_at
         )
-        .bind(user_id)
-        .bind(token)
-        .bind(expires_at)
         .fetch_one(pool)
         .await?;
 
@@ -28,12 +29,13 @@ impl SessionService {
     pub async fn validate_session(pool: &PgPool, token: &str) -> Result<User, AppError> {
         let now = Utc::now();
 
-        let session = sqlx::query_as::<_, UserSession>(
+        let session = sqlx::query_as!(
+            UserSession,
             "SELECT id, user_id, session_token, expires_at, created_at, last_active_at \
              FROM user_sessions \
              WHERE session_token = $1",
+            token
         )
-        .bind(token)
         .fetch_optional(pool)
         .await?;
 
@@ -43,19 +45,19 @@ impl SessionService {
         };
 
         if session.expires_at < now {
-            let _ = sqlx::query("DELETE FROM user_sessions WHERE session_token = $1")
-                .bind(token)
+            let _ = sqlx::query!("DELETE FROM user_sessions WHERE session_token = $1", token)
                 .execute(pool)
                 .await;
             return Err(AppError::Unauthorized("Session expired".to_string()));
         }
 
-        let user = sqlx::query_as::<_, User>(
+        let user = sqlx::query_as!(
+            User,
             "SELECT id, email, name, avatar_url, created_at, updated_at \
              FROM users \
              WHERE id = $1",
+            session.user_id
         )
-        .bind(session.user_id)
         .fetch_optional(pool)
         .await?;
 
@@ -65,17 +67,18 @@ impl SessionService {
         };
 
         // Update last active timestamp
-        let _ = sqlx::query("UPDATE user_sessions SET last_active_at = NOW() WHERE id = $1")
-            .bind(session.id)
-            .execute(pool)
-            .await;
+        let _ = sqlx::query!(
+            "UPDATE user_sessions SET last_active_at = NOW() WHERE id = $1",
+            session.id
+        )
+        .execute(pool)
+        .await;
 
         Ok(user)
     }
 
     pub async fn destroy_session(pool: &PgPool, token: &str) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM user_sessions WHERE session_token = $1")
-            .bind(token)
+        sqlx::query!("DELETE FROM user_sessions WHERE session_token = $1", token)
             .execute(pool)
             .await?;
 

@@ -53,25 +53,29 @@ impl BoardState {
         pool: &sqlx::PgPool,
         workspace_id: Uuid,
     ) -> Result<Self, crate::AppError> {
-        let columns_fut = sqlx::query_as::<_, Column>(
-            "SELECT id, workspace_id, title, position, wip_limit, is_done, created_at, updated_at FROM columns WHERE workspace_id = $1 ORDER BY position"
+        let columns_fut = sqlx::query_as!(
+            Column,
+            "SELECT id, workspace_id, title, position, wip_limit, is_done, created_at, updated_at FROM columns WHERE workspace_id = $1 ORDER BY position",
+            workspace_id
         )
-        .bind(workspace_id)
         .fetch_all(pool);
 
-        let swimlanes_fut = sqlx::query_as::<_, Swimlane>(
-            "SELECT id, workspace_id, title, position, wip_limit, created_at, updated_at FROM swimlanes WHERE workspace_id = $1 ORDER BY position"
+        let swimlanes_fut = sqlx::query_as!(
+            Swimlane,
+            "SELECT id, workspace_id, title, position, wip_limit, created_at, updated_at FROM swimlanes WHERE workspace_id = $1 ORDER BY position",
+            workspace_id
         )
-        .bind(workspace_id)
         .fetch_all(pool);
 
-        let cards_fut = sqlx::query_as::<_, Card>(
+        let cards_fut = sqlx::query_as!(
+            Card,
             "SELECT * FROM cards WHERE workspace_id = $1 AND deleted_at IS NULL",
+            workspace_id
         )
-        .bind(workspace_id)
         .fetch_all(pool);
 
-        let checklists_fut = sqlx::query_as::<_, crate::models::card::ChecklistItem>(
+        let checklists_fut = sqlx::query_as!(
+            crate::models::card::ChecklistItem,
             r#"
             SELECT c.*
             FROM card_checklists c
@@ -79,14 +83,15 @@ impl BoardState {
             WHERE card.workspace_id = $1 AND card.deleted_at IS NULL
             ORDER BY c.card_id, c.position
             "#,
+            workspace_id
         )
-        .bind(workspace_id)
         .fetch_all(pool);
 
-        let rules_fut = sqlx::query_as::<_, TransitionRule>(
+        let rules_fut = sqlx::query_as!(
+            TransitionRule,
             "SELECT * FROM transition_rules WHERE workspace_id = $1",
+            workspace_id
         )
-        .bind(workspace_id)
         .fetch_all(pool);
 
         let (columns, swimlanes, cards, checklists, transition_rules) = tokio::try_join!(
