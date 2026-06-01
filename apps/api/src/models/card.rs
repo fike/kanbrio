@@ -31,8 +31,8 @@ pub struct Card {
     pub blocked_reason: Option<String>,
     pub is_archived: bool,
     pub deleted_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,6 +59,50 @@ pub struct BlockComment {
     pub content: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Represents a card row from the recursive hierarchy CTE query.
+/// All fields are Option because CTE columns are considered nullable by PostgreSQL.
+#[derive(Debug, sqlx::FromRow, Clone)]
+pub struct CardHierarchyRow {
+    pub id: Option<Uuid>,
+    pub parent_id: Option<Uuid>,
+    pub workspace_id: Option<Uuid>,
+    pub title: Option<String>,
+    pub current_column_id: Option<Uuid>,
+    pub current_swimlane_id: Option<Uuid>,
+    pub assigned_user_id: Option<Uuid>,
+    pub is_blocked: Option<bool>,
+    pub blocked_by: Option<Uuid>,
+    pub blocked_at: Option<DateTime<Utc>>,
+    pub blocked_reason: Option<String>,
+    pub is_archived: Option<bool>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+impl CardHierarchyRow {
+    #[allow(clippy::wrong_self_convention)]
+    fn to_card(self) -> Option<Card> {
+        Some(Card {
+            id: self.id?,
+            parent_id: self.parent_id,
+            workspace_id: self.workspace_id?,
+            title: self.title?,
+            current_column_id: self.current_column_id?,
+            current_swimlane_id: self.current_swimlane_id?,
+            assigned_user_id: self.assigned_user_id,
+            is_blocked: self.is_blocked?,
+            blocked_by: self.blocked_by,
+            blocked_at: self.blocked_at,
+            blocked_reason: self.blocked_reason,
+            is_archived: self.is_archived?,
+            deleted_at: self.deleted_at,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -115,21 +159,23 @@ impl Card {
         }
 
         // 2. Validate target column/swimlane workspace alignment
-        let target_col_ws: (Uuid,) = sqlx::query!(
+        let target_col_ws_row = sqlx::query!(
             "SELECT workspace_id FROM columns WHERE id = $1",
             data.to_column_id
         )
         .fetch_one(&mut *tx)
         .await?;
 
-        let target_lane_ws: (Uuid,) = sqlx::query!(
+        let target_lane_ws_row = sqlx::query!(
             "SELECT workspace_id FROM swimlanes WHERE id = $1",
             data.to_swimlane_id
         )
         .fetch_one(&mut *tx)
         .await?;
 
-        if target_col_ws.0 != data.workspace_id || target_lane_ws.0 != data.workspace_id {
+        if target_col_ws_row.workspace_id != data.workspace_id
+            || target_lane_ws_row.workspace_id != data.workspace_id
+        {
             return Err(anyhow::anyhow!(
                 "Target column or swimlane belongs to a different workspace"
             )
@@ -139,7 +185,7 @@ impl Card {
         // --- 3.5 Arrival & Departure Rules (Issue #31) ---
         let mut is_admin = false;
         if let Some(user_id) = data.user_id {
-            let role_res: Result<(String,), _> = sqlx::query!(
+            let role_res = sqlx::query!(
                 "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
                 data.workspace_id,
                 user_id
@@ -147,7 +193,7 @@ impl Card {
             .fetch_one(&mut *tx)
             .await;
             if let Ok(role) = role_res {
-                is_admin = role.0 == "admin";
+                is_admin = role.role == "admin";
             }
         }
 
@@ -184,15 +230,15 @@ impl Card {
 
         // 3. WIP Limit Validation (Issue #4)
         // Security/SRE: Lock the column conditionally to prevent race conditions during WIP count
-        let wip_limit_check: (Option<i32>,) = sqlx::query!(
+        let wip_limit_check_row = sqlx::query!(
             "SELECT wip_limit FROM columns WHERE id = $1",
             data.to_column_id
         )
         .fetch_one(&mut *tx)
         .await?;
 
-        if let Some(limit) = wip_limit_check.0 {
-            let _wip_limit: (Option<i32>,) = sqlx::query!(
+        if let Some(limit) = wip_limit_check_row.wip_limit {
+            let _wip_limit_row = sqlx::query!(
                 "SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE",
                 data.to_column_id
             )
@@ -201,7 +247,7 @@ impl Card {
 
             // Only enforce if moving from a different column
             if current_card.current_column_id != data.to_column_id {
-                let current_count: (i64,) =
+                let current_count_row =
                     sqlx::query!(
                         "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2",
                         data.to_column_id,
@@ -210,7 +256,7 @@ impl Card {
                     .fetch_one(&mut *tx)
                     .await?;
 
-                if current_count.0 >= limit as i64 {
+                if current_count_row.count.unwrap_or(0) >= limit as i64 {
                     tracing::warn!(
                         column_id = ?data.to_column_id,
                         card_id = ?data.card_id,
@@ -225,15 +271,15 @@ impl Card {
             }
         }
 
-        let swimlane_wip_limit_check: (Option<i32>,) = sqlx::query!(
+        let swimlane_wip_limit_check = sqlx::query!(
             "SELECT wip_limit FROM swimlanes WHERE id = $1",
             data.to_swimlane_id
         )
         .fetch_one(&mut *tx)
         .await?;
 
-        if let Some(limit) = swimlane_wip_limit_check.0 {
-            let _swimlane_wip_limit: (Option<i32>,) = sqlx::query!(
+        if let Some(limit) = swimlane_wip_limit_check.wip_limit {
+            let _swimlane_wip_limit = sqlx::query!(
                 "SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE",
                 data.to_swimlane_id
             )
@@ -242,7 +288,7 @@ impl Card {
 
             // Only enforce if moving from a different swimlane
             if current_card.current_swimlane_id != data.to_swimlane_id {
-                let current_count: (i64,) =
+                let current_count_row =
                     sqlx::query!(
                         "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2",
                         data.to_swimlane_id,
@@ -251,7 +297,7 @@ impl Card {
                     .fetch_one(&mut *tx)
                     .await?;
 
-                if current_count.0 >= limit as i64 {
+                if current_count_row.count.unwrap_or(0) >= limit as i64 {
                     tracing::warn!(
                         swimlane_id = ?data.to_swimlane_id,
                         card_id = ?data.card_id,
@@ -266,13 +312,13 @@ impl Card {
             }
         }
 
-        let source_col: (bool,) = sqlx::query!(
+        let source_col_row = sqlx::query!(
             "SELECT is_done FROM columns WHERE id = $1",
             current_card.current_column_id
         )
         .fetch_one(&mut *tx)
         .await?;
-        let target_col: (bool,) = sqlx::query!(
+        let target_col_row = sqlx::query!(
             "SELECT is_done FROM columns WHERE id = $1",
             data.to_column_id
         )
@@ -280,7 +326,7 @@ impl Card {
         .await?;
 
         if let Some(target_user) = current_card.assigned_user_id {
-            if source_col.0 && !target_col.0 {
+            if source_col_row.is_done && !target_col_row.is_done {
                 let member: crate::models::user::WorkspaceMember = sqlx::query_as!(
                     crate::models::user::WorkspaceMember,
                     "SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE",
@@ -291,7 +337,7 @@ impl Card {
                 .await?;
 
                 if let Some(limit) = member.wip_limit {
-                    let active_count: (i64,) = sqlx::query!(
+                    let active_count_row = sqlx::query!(
                         r#"
                         SELECT COUNT(*)
                         FROM cards c
@@ -310,7 +356,7 @@ impl Card {
                     .fetch_one(&mut *tx)
                     .await?;
 
-                    if active_count.0 >= limit as i64 {
+                    if active_count_row.count.unwrap_or(0) >= limit as i64 {
                         return Err(crate::AppError::WipLimitExceeded {
                             entity: "user".to_string(),
                             limit,
@@ -383,7 +429,7 @@ impl Card {
 
         // 1. Validate parent workspace alignment
         if let Some(parent_id) = data.parent_id {
-            let parent_workspace_id: (Uuid,) =
+            let parent_workspace_id_row =
                 sqlx::query!("SELECT workspace_id FROM cards WHERE id = $1", parent_id)
                     .fetch_one(&mut *tx)
                     .await
@@ -392,36 +438,36 @@ impl Card {
                         _ => crate::AppError::Database(e),
                     })?;
 
-            if parent_workspace_id.0 != data.workspace_id {
+            if parent_workspace_id_row.workspace_id != data.workspace_id {
                 return Err(anyhow::anyhow!("Parent card belongs to a different workspace").into());
             }
         }
 
         // 2. WIP Limit Validation (Issue #4)
         // Lock the column conditionally to prevent race conditions
-        let wip_limit_check: (Option<i32>,) = sqlx::query!(
+        let wip_limit_check_row = sqlx::query!(
             "SELECT wip_limit FROM columns WHERE id = $1",
             data.current_column_id
         )
         .fetch_one(&mut *tx)
         .await?;
 
-        if let Some(limit) = wip_limit_check.0 {
-            let _wip_limit: (Option<i32>,) = sqlx::query!(
+        if let Some(limit) = wip_limit_check_row.wip_limit {
+            let _wip_limit_row = sqlx::query!(
                 "SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE",
                 data.current_column_id
             )
             .fetch_one(&mut *tx)
             .await?;
 
-            let current_count: (i64,) = sqlx::query!(
+            let current_count_row = sqlx::query!(
                 "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL",
                 data.current_column_id
             )
             .fetch_one(&mut *tx)
             .await?;
 
-            if current_count.0 >= limit as i64 {
+            if current_count_row.count.unwrap_or(0) >= limit as i64 {
                 tracing::warn!(
                     column_id = ?data.current_column_id,
                     workspace_id = ?data.workspace_id,
@@ -435,29 +481,29 @@ impl Card {
             }
         }
 
-        let swimlane_wip_limit_check: (Option<i32>,) = sqlx::query!(
+        let swimlane_wip_limit_check_row = sqlx::query!(
             "SELECT wip_limit FROM swimlanes WHERE id = $1",
             data.current_swimlane_id
         )
         .fetch_one(&mut *tx)
         .await?;
 
-        if let Some(limit) = swimlane_wip_limit_check.0 {
-            let _swimlane_wip_limit: (Option<i32>,) = sqlx::query!(
+        if let Some(limit) = swimlane_wip_limit_check_row.wip_limit {
+            let _swimlane_wip_limit_row = sqlx::query!(
                 "SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE",
                 data.current_swimlane_id
             )
             .fetch_one(&mut *tx)
             .await?;
 
-            let current_count: (i64,) = sqlx::query!(
+            let current_count_row = sqlx::query!(
                 "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL",
                 data.current_swimlane_id
             )
             .fetch_one(&mut *tx)
             .await?;
 
-            if current_count.0 >= limit as i64 {
+            if current_count_row.count.unwrap_or(0) >= limit as i64 {
                 tracing::warn!(
                     swimlane_id = ?data.current_swimlane_id,
                     workspace_id = ?data.workspace_id,
@@ -762,7 +808,7 @@ impl Card {
         root_id: Uuid,
     ) -> Result<CardHierarchy, crate::AppError> {
         let rows = sqlx::query_as!(
-            Card,
+            CardHierarchyRow,
             r#"
             WITH RECURSIVE hierarchy AS (
                 -- Base case
@@ -794,10 +840,14 @@ impl Card {
         let mut root_card = None;
 
         for row in rows {
-            if row.id == root_id {
-                root_card = Some(row.clone());
+            let card = row.to_card().ok_or(crate::AppError::NotFound)?;
+            if card.id == root_id {
+                root_card = Some(card.clone());
             }
-            nodes_by_parent.entry(row.parent_id).or_default().push(row);
+            nodes_by_parent
+                .entry(card.parent_id)
+                .or_default()
+                .push(card);
         }
 
         let root_card = root_card.ok_or(crate::AppError::NotFound)?;
@@ -839,7 +889,7 @@ impl Card {
         let mut tx = pool.begin().await?;
 
         // First, perform a lightweight, non-locking select
-        let card_workspace: (Uuid,) =
+        let card_workspace_row =
             sqlx::query!("SELECT workspace_id FROM cards WHERE id = $1", card_id)
                 .fetch_one(&mut *tx)
                 .await
@@ -848,7 +898,7 @@ impl Card {
                     _ => crate::AppError::Database(e),
                 })?;
 
-        if card_workspace.0 != workspace_id {
+        if card_workspace_row.workspace_id != workspace_id {
             return Err(crate::AppError::Forbidden);
         }
 
@@ -867,7 +917,7 @@ impl Card {
         })?;
 
         // 2. Determine target column's completed state
-        let target_col: (bool,) = sqlx::query!(
+        let target_col_row = sqlx::query!(
             "SELECT is_done FROM columns WHERE id = $1 AND workspace_id = $2",
             card.current_column_id,
             workspace_id
@@ -875,7 +925,7 @@ impl Card {
         .fetch_one(&mut *tx)
         .await?;
 
-        let is_target_active = !target_col.0;
+        let is_target_active = !target_col_row.is_done;
 
         if let Some(target_user) = assignee_id {
             // 3. Pessimistic lock on the user's membership to serialize parallel assignments
@@ -897,7 +947,7 @@ impl Card {
                 if let Some(limit) = member.wip_limit {
                     if !override_limit || !is_admin {
                         // Count active cards assigned to this user in active columns
-                        let active_count: (i64,) = sqlx::query!(
+                        let active_count_row = sqlx::query!(
                             r#"
                             SELECT COUNT(*)
                             FROM cards c
@@ -916,11 +966,12 @@ impl Card {
                         .fetch_one(&mut *tx)
                         .await?;
 
-                        if active_count.0 >= limit as i64 {
+                        let active_count = active_count_row.count.unwrap_or(0);
+                        if active_count >= limit as i64 {
                             tracing::warn!(
                                 user_id = ?target_user,
                                 limit = limit,
-                                active_count = active_count.0,
+                                active_count = active_count,
                                 "User WIP limit exceeded"
                             );
                             return Err(crate::AppError::WipLimitExceeded {
@@ -999,20 +1050,20 @@ impl Card {
                 ));
             }
             "checklist_completed" => {
-                let uncompleted_count: (i64,) = sqlx::query!(
+                let uncompleted_count_row = sqlx::query!(
                     "SELECT COUNT(*) FROM card_checklists WHERE card_id = $1 AND is_completed = FALSE",
                     card.id
                 )
                 .fetch_one(conn)
                 .await?;
 
-                if uncompleted_count.0 > 0 {
+                if uncompleted_count_row.count.unwrap_or(0) > 0 {
                     tracing::warn!(
                         card_id = ?card.id,
                         workspace_id = ?card.workspace_id,
                         column_id = ?rule.column_id,
                         criteria_type = ?rule.criteria_type,
-                        uncompleted_checklist_count = uncompleted_count.0,
+                        uncompleted_checklist_count = uncompleted_count_row.count.unwrap_or(0),
                         "Transition rule violation: Uncompleted checklist items"
                     );
                     return Err(crate::AppError::RuleViolation(
@@ -1021,7 +1072,7 @@ impl Card {
                 }
             }
             "subtasks_completed" => {
-                let active_children: (i64,) = sqlx::query!(
+                let active_children_row = sqlx::query!(
                     r#"
                     SELECT COUNT(*)
                     FROM cards c
@@ -1033,13 +1084,14 @@ impl Card {
                 .fetch_one(conn)
                 .await?;
 
-                if active_children.0 > 0 {
+                let active_children = active_children_row.count.unwrap_or(0);
+                if active_children > 0 {
                     tracing::warn!(
                         card_id = ?card.id,
                         workspace_id = ?card.workspace_id,
                         column_id = ?rule.column_id,
                         criteria_type = ?rule.criteria_type,
-                        active_subtasks_count = active_children.0,
+                        active_subtasks_count = active_children,
                         "Transition rule violation: Active subtasks remaining"
                     );
                     return Err(crate::AppError::RuleViolation(

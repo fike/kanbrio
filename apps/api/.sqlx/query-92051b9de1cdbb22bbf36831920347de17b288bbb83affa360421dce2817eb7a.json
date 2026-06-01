@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO card_transitions (card_id, transition_type, to_column_id, payload)\n            VALUES ($1, 'create', $2, $3)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "92051b9de1cdbb22bbf36831920347de17b288bbb83affa360421dce2817eb7a"
+}

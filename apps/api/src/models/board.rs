@@ -23,8 +23,8 @@ pub struct Column {
     pub position: i32,
     pub wip_limit: Option<i32>,
     pub is_done: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -34,8 +34,8 @@ pub struct Swimlane {
     pub title: String,
     pub position: i32,
     pub wip_limit: Option<i32>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

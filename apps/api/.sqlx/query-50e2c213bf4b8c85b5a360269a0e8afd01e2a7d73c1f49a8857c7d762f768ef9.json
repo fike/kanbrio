@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                            SELECT COUNT(*)\n                            FROM cards c\n                            INNER JOIN columns col ON c.current_column_id = col.id\n                            WHERE c.assigned_user_id = $1\n                              AND c.workspace_id = $2\n                              AND col.is_done = FALSE\n                              AND c.is_archived = FALSE\n                              AND c.deleted_at IS NULL\n                              AND c.id != $3\n                            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "50e2c213bf4b8c85b5a360269a0e8afd01e2a7d73c1f49a8857c7d762f768ef9"
+}

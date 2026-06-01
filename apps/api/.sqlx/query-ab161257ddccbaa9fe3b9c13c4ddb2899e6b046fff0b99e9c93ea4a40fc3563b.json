@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM card_checklists c\n        USING cards card\n        WHERE c.card_id = card.id\n          AND c.id = $1\n          AND c.card_id = $2\n          AND card.workspace_id = $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ab161257ddccbaa9fe3b9c13c4ddb2899e6b046fff0b99e9c93ea4a40fc3563b"
+}

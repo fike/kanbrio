@@ -15,7 +15,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
+          POSTGRES_PASSWORD: password # pragma: allowlist secret
           POSTGRES_DB: kanbrio_test
         ports:
           - 5432:5432
@@ -50,7 +50,8 @@ jobs:
         run: cargo test
         working-directory: apps/api
         env:
-          DATABASE_URL: postgres://postgres:password@localhost:5432/kanbrio_test
+          DATABASE_URL: postgres://postgres:password@localhost:5432/kanbrio_test # pragma: allowlist secret
+          SQLX_OFFLINE: "true"
 
   frontend:
     name: Frontend (Solid)

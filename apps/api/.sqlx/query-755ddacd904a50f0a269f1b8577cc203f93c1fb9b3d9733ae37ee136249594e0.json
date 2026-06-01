@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Default Swimlane', 0)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "755ddacd904a50f0a269f1b8577cc203f93c1fb9b3d9733ae37ee136249594e0"
+}

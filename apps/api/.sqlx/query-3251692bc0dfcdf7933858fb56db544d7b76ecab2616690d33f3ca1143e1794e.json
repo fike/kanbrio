@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO card_transitions (card_id, user_id, transition_type) VALUES ($1, $2, 'unblock')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3251692bc0dfcdf7933858fb56db544d7b76ecab2616690d33f3ca1143e1794e"
+}

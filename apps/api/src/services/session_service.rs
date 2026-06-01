@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::models::user::{User, UserSession};
+use crate::models::user::{User, UserRow, UserSession};
 use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -51,8 +51,8 @@ impl SessionService {
             return Err(AppError::Unauthorized("Session expired".to_string()));
         }
 
-        let user = sqlx::query_as!(
-            User,
+        let user_row = sqlx::query_as!(
+            UserRow,
             "SELECT id, email, name, avatar_url, created_at, updated_at \
              FROM users \
              WHERE id = $1",
@@ -61,8 +61,8 @@ impl SessionService {
         .fetch_optional(pool)
         .await?;
 
-        let user = match user {
-            Some(u) => u,
+        let user = match user_row {
+            Some(r) => r.into(),
             None => return Err(AppError::Unauthorized("User not found".to_string())),
         };
 
