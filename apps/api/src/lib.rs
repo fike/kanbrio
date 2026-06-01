@@ -13,6 +13,7 @@ use crate::handlers::board::{
     delete_checklist_item, get_block_comments, get_board_state, get_card_history, move_card,
     set_user_wip_limit, unblock_card, update_checklist_item,
 };
+use crate::handlers::health::health;
 use axum::{
     Router,
     routing::{get, post},
@@ -30,6 +31,7 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
 
     Router::new()
         .route("/", get(|| async { "Kanbrio API" }))
+        .route("/health", get(health))
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
