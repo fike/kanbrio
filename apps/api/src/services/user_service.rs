@@ -21,11 +21,12 @@ impl UserService {
         let password_owned = password.to_string();
 
         // 1. Check if user already exists
-        let email_exists =
-            sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)")
-                .bind(&email_owned)
-                .fetch_one(pool)
-                .await?;
+        let email_exists = sqlx::query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)",
+            email_owned
+        )
+        .fetch_one(pool)
+        .await?;
 
         if email_exists {
             return Err(AppError::BadRequest(
@@ -50,19 +51,22 @@ impl UserService {
         // 3. Insert user & credentials in a transaction
         let mut tx = pool.begin().await?;
 
-        let user = sqlx::query_as::<_, User>(
+        let user = sqlx::query_as!(
+            User,
             "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *",
+            name_owned,
+            email_owned
         )
-        .bind(name_owned)
-        .bind(&email_owned)
         .fetch_one(&mut *tx)
         .await?;
 
-        sqlx::query("INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, $2)")
-            .bind(user.id)
-            .bind(password_hash)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, $2)",
+            user.id,
+            password_hash
+        )
+        .execute(&mut *tx)
+        .await?;
 
         tx.commit().await?;
 
@@ -78,10 +82,11 @@ impl UserService {
         let password_owned = password.to_string();
 
         // 1. Fetch user by email
-        let user = sqlx::query_as::<_, User>(
-            "SELECT id, email, name, avatar_url, created_at, updated_at FROM users WHERE email = $1"
+        let user = sqlx::query_as!(
+            User,
+            "SELECT id, email, name, avatar_url, created_at, updated_at FROM users WHERE email = $1",
+            email_owned
         )
-        .bind(&email_owned)
         .fetch_optional(pool)
         .await?;
 
@@ -95,10 +100,10 @@ impl UserService {
         };
 
         // 2. Fetch credential password hash
-        let password_hash = sqlx::query_scalar::<_, String>(
+        let password_hash = sqlx::query_scalar!(
             "SELECT password_hash FROM user_credentials WHERE user_id = $1",
+            user.id
         )
-        .bind(user.id)
         .fetch_one(pool)
         .await?;
 
@@ -130,16 +135,17 @@ impl UserService {
         let avatar_url_owned = avatar_url.map(|s| s.to_string());
 
         // Upsert user based on email matching
-        let user = sqlx::query_as::<_, User>(
+        let user = sqlx::query_as!(
+            User,
             "INSERT INTO users (email, name, avatar_url) \
              VALUES ($1, $2, $3) \
              ON CONFLICT (email) \
              DO UPDATE SET name = EXCLUDED.name, avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url), updated_at = NOW() \
-             RETURNING *"
+             RETURNING *",
+            email_owned,
+            name_owned,
+            avatar_url_owned
         )
-        .bind(email_owned)
-        .bind(name_owned)
-        .bind(avatar_url_owned)
         .fetch_one(pool)
         .await?;
 

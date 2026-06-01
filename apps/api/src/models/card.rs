@@ -94,11 +94,12 @@ impl Card {
         let mut tx = pool.begin().await?;
 
         // 1. Get current state with workspace isolation
-        let current_card = sqlx::query_as::<_, Card>(
+        let current_card = sqlx::query_as!(
+            Card,
             "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE",
+            data.card_id,
+            data.workspace_id
         )
-        .bind(data.card_id)
-        .bind(data.workspace_id)
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| match e {
@@ -114,17 +115,19 @@ impl Card {
         }
 
         // 2. Validate target column/swimlane workspace alignment
-        let target_col_ws: (Uuid,) =
-            sqlx::query_as("SELECT workspace_id FROM columns WHERE id = $1")
-                .bind(data.to_column_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let target_col_ws: (Uuid,) = sqlx::query!(
+            "SELECT workspace_id FROM columns WHERE id = $1",
+            data.to_column_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
-        let target_lane_ws: (Uuid,) =
-            sqlx::query_as("SELECT workspace_id FROM swimlanes WHERE id = $1")
-                .bind(data.to_swimlane_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let target_lane_ws: (Uuid,) = sqlx::query!(
+            "SELECT workspace_id FROM swimlanes WHERE id = $1",
+            data.to_swimlane_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         if target_col_ws.0 != data.workspace_id || target_lane_ws.0 != data.workspace_id {
             return Err(anyhow::anyhow!(
@@ -136,11 +139,11 @@ impl Card {
         // --- 3.5 Arrival & Departure Rules (Issue #31) ---
         let mut is_admin = false;
         if let Some(user_id) = data.user_id {
-            let role_res: Result<(String,), _> = sqlx::query_as(
+            let role_res: Result<(String,), _> = sqlx::query!(
                 "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+                data.workspace_id,
+                user_id
             )
-            .bind(data.workspace_id)
-            .bind(user_id)
             .fetch_one(&mut *tx)
             .await;
             if let Ok(role) = role_res {
@@ -153,10 +156,11 @@ impl Card {
         // Only enforce if the column has actually changed and override is NOT active
         if current_card.current_column_id != data.to_column_id && !is_override {
             // Validate Departure Rules of the source column
-            let departure_rules: Vec<crate::models::board::TransitionRule> = sqlx::query_as(
+            let departure_rules: Vec<crate::models::board::TransitionRule> = sqlx::query_as!(
+                crate::models::board::TransitionRule,
                 "SELECT * FROM transition_rules WHERE column_id = $1 AND rule_type = 'departure'",
+                current_card.current_column_id
             )
-            .bind(current_card.current_column_id)
             .fetch_all(&mut *tx)
             .await?;
 
@@ -165,10 +169,11 @@ impl Card {
             }
 
             // Validate Arrival Rules of the target column
-            let arrival_rules: Vec<crate::models::board::TransitionRule> = sqlx::query_as(
+            let arrival_rules: Vec<crate::models::board::TransitionRule> = sqlx::query_as!(
+                crate::models::board::TransitionRule,
                 "SELECT * FROM transition_rules WHERE column_id = $1 AND rule_type = 'arrival'",
+                data.to_column_id
             )
-            .bind(data.to_column_id)
             .fetch_all(&mut *tx)
             .await?;
 
@@ -179,27 +184,31 @@ impl Card {
 
         // 3. WIP Limit Validation (Issue #4)
         // Security/SRE: Lock the column conditionally to prevent race conditions during WIP count
-        let wip_limit_check: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1")
-                .bind(data.to_column_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let wip_limit_check: (Option<i32>,) = sqlx::query!(
+            "SELECT wip_limit FROM columns WHERE id = $1",
+            data.to_column_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         if let Some(limit) = wip_limit_check.0 {
-            let _wip_limit: (Option<i32>,) =
-                sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
-                    .bind(data.to_column_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
+            let _wip_limit: (Option<i32>,) = sqlx::query!(
+                "SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE",
+                data.to_column_id
+            )
+            .fetch_one(&mut *tx)
+            .await?;
 
             // Only enforce if moving from a different column
             if current_card.current_column_id != data.to_column_id {
                 let current_count: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2")
-                        .bind(data.to_column_id)
-                        .bind(data.card_id)
-                        .fetch_one(&mut *tx)
-                        .await?;
+                    sqlx::query!(
+                        "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2",
+                        data.to_column_id,
+                        data.card_id
+                    )
+                    .fetch_one(&mut *tx)
+                    .await?;
 
                 if current_count.0 >= limit as i64 {
                     tracing::warn!(
@@ -216,27 +225,31 @@ impl Card {
             }
         }
 
-        let swimlane_wip_limit_check: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1")
-                .bind(data.to_swimlane_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let swimlane_wip_limit_check: (Option<i32>,) = sqlx::query!(
+            "SELECT wip_limit FROM swimlanes WHERE id = $1",
+            data.to_swimlane_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         if let Some(limit) = swimlane_wip_limit_check.0 {
-            let _swimlane_wip_limit: (Option<i32>,) =
-                sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
-                    .bind(data.to_swimlane_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
+            let _swimlane_wip_limit: (Option<i32>,) = sqlx::query!(
+                "SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE",
+                data.to_swimlane_id
+            )
+            .fetch_one(&mut *tx)
+            .await?;
 
             // Only enforce if moving from a different swimlane
             if current_card.current_swimlane_id != data.to_swimlane_id {
                 let current_count: (i64,) =
-                    sqlx::query_as("SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2")
-                        .bind(data.to_swimlane_id)
-                        .bind(data.card_id)
-                        .fetch_one(&mut *tx)
-                        .await?;
+                    sqlx::query!(
+                        "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL AND id != $2",
+                        data.to_swimlane_id,
+                        data.card_id
+                    )
+                    .fetch_one(&mut *tx)
+                    .await?;
 
                 if current_count.0 >= limit as i64 {
                     tracing::warn!(
@@ -253,27 +266,32 @@ impl Card {
             }
         }
 
-        let source_col: (bool,) = sqlx::query_as("SELECT is_done FROM columns WHERE id = $1")
-            .bind(current_card.current_column_id)
-            .fetch_one(&mut *tx)
-            .await?;
-        let target_col: (bool,) = sqlx::query_as("SELECT is_done FROM columns WHERE id = $1")
-            .bind(data.to_column_id)
-            .fetch_one(&mut *tx)
-            .await?;
+        let source_col: (bool,) = sqlx::query!(
+            "SELECT is_done FROM columns WHERE id = $1",
+            current_card.current_column_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let target_col: (bool,) = sqlx::query!(
+            "SELECT is_done FROM columns WHERE id = $1",
+            data.to_column_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         if let Some(target_user) = current_card.assigned_user_id {
             if source_col.0 && !target_col.0 {
-                let member: crate::models::user::WorkspaceMember = sqlx::query_as(
-                    "SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE"
+                let member: crate::models::user::WorkspaceMember = sqlx::query_as!(
+                    crate::models::user::WorkspaceMember,
+                    "SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE",
+                    data.workspace_id,
+                    target_user
                 )
-                .bind(data.workspace_id)
-                .bind(target_user)
                 .fetch_one(&mut *tx)
                 .await?;
 
                 if let Some(limit) = member.wip_limit {
-                    let active_count: (i64,) = sqlx::query_as(
+                    let active_count: (i64,) = sqlx::query!(
                         r#"
                         SELECT COUNT(*)
                         FROM cards c
@@ -285,10 +303,10 @@ impl Card {
                           AND c.deleted_at IS NULL
                           AND c.id != $3
                         "#,
+                        target_user,
+                        data.workspace_id,
+                        data.card_id
                     )
-                    .bind(target_user)
-                    .bind(data.workspace_id)
-                    .bind(data.card_id)
                     .fetch_one(&mut *tx)
                     .await?;
 
@@ -303,17 +321,18 @@ impl Card {
         }
 
         // 4. Perform the move
-        let updated_card = sqlx::query_as::<_, Card>(
+        let updated_card = sqlx::query_as!(
+            Card,
             r#"
             UPDATE cards
             SET current_column_id = $1, current_swimlane_id = $2, updated_at = NOW()
             WHERE id = $3
             RETURNING *
             "#,
+            data.to_column_id,
+            data.to_swimlane_id,
+            data.card_id
         )
-        .bind(data.to_column_id)
-        .bind(data.to_swimlane_id)
-        .bind(data.card_id)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -324,7 +343,7 @@ impl Card {
             "move".to_string()
         };
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO card_transitions (
                 card_id, user_id, transition_type,
@@ -334,22 +353,22 @@ impl Card {
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
+            updated_card.id,
+            data.user_id,
+            transition_type,
+            current_card.current_column_id,
+            updated_card.current_column_id,
+            current_card.current_swimlane_id,
+            updated_card.current_swimlane_id,
+            serde_json::json!({
+                "from_column_id": current_card.current_column_id,
+                "to_column_id": updated_card.current_column_id,
+                "from_swimlane_id": current_card.current_swimlane_id,
+                "to_swimlane_id": updated_card.current_swimlane_id,
+                "is_override": is_override,
+                "override_reason": data.override_reason
+            })
         )
-        .bind(updated_card.id)
-        .bind(data.user_id)
-        .bind(transition_type)
-        .bind(current_card.current_column_id)
-        .bind(updated_card.current_column_id)
-        .bind(current_card.current_swimlane_id)
-        .bind(updated_card.current_swimlane_id)
-        .bind(serde_json::json!({
-            "from_column_id": current_card.current_column_id,
-            "to_column_id": updated_card.current_column_id,
-            "from_swimlane_id": current_card.current_swimlane_id,
-            "to_swimlane_id": updated_card.current_swimlane_id,
-            "is_override": is_override,
-            "override_reason": data.override_reason
-        }))
         .execute(&mut *tx)
         .await?;
 
@@ -365,8 +384,7 @@ impl Card {
         // 1. Validate parent workspace alignment
         if let Some(parent_id) = data.parent_id {
             let parent_workspace_id: (Uuid,) =
-                sqlx::query_as("SELECT workspace_id FROM cards WHERE id = $1")
-                    .bind(parent_id)
+                sqlx::query!("SELECT workspace_id FROM cards WHERE id = $1", parent_id)
                     .fetch_one(&mut *tx)
                     .await
                     .map_err(|e| match e {
@@ -381,23 +399,25 @@ impl Card {
 
         // 2. WIP Limit Validation (Issue #4)
         // Lock the column conditionally to prevent race conditions
-        let wip_limit_check: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1")
-                .bind(data.current_column_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let wip_limit_check: (Option<i32>,) = sqlx::query!(
+            "SELECT wip_limit FROM columns WHERE id = $1",
+            data.current_column_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         if let Some(limit) = wip_limit_check.0 {
-            let _wip_limit: (Option<i32>,) =
-                sqlx::query_as("SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE")
-                    .bind(data.current_column_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
-
-            let current_count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL",
+            let _wip_limit: (Option<i32>,) = sqlx::query!(
+                "SELECT wip_limit FROM columns WHERE id = $1 FOR UPDATE",
+                data.current_column_id
             )
-            .bind(data.current_column_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let current_count: (i64,) = sqlx::query!(
+                "SELECT COUNT(*) FROM cards WHERE current_column_id = $1 AND is_archived = false AND deleted_at IS NULL",
+                data.current_column_id
+            )
             .fetch_one(&mut *tx)
             .await?;
 
@@ -415,23 +435,25 @@ impl Card {
             }
         }
 
-        let swimlane_wip_limit_check: (Option<i32>,) =
-            sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1")
-                .bind(data.current_swimlane_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let swimlane_wip_limit_check: (Option<i32>,) = sqlx::query!(
+            "SELECT wip_limit FROM swimlanes WHERE id = $1",
+            data.current_swimlane_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         if let Some(limit) = swimlane_wip_limit_check.0 {
-            let _swimlane_wip_limit: (Option<i32>,) =
-                sqlx::query_as("SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE")
-                    .bind(data.current_swimlane_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
-
-            let current_count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL",
+            let _swimlane_wip_limit: (Option<i32>,) = sqlx::query!(
+                "SELECT wip_limit FROM swimlanes WHERE id = $1 FOR UPDATE",
+                data.current_swimlane_id
             )
-            .bind(data.current_swimlane_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let current_count: (i64,) = sqlx::query!(
+                "SELECT COUNT(*) FROM cards WHERE current_swimlane_id = $1 AND is_archived = false AND deleted_at IS NULL",
+                data.current_swimlane_id
+            )
             .fetch_one(&mut *tx)
             .await?;
 
@@ -449,33 +471,34 @@ impl Card {
             }
         }
 
-        let card = sqlx::query_as::<_, Card>(
+        let card = sqlx::query_as!(
+            Card,
             r#"
             INSERT INTO cards (parent_id, workspace_id, title, current_column_id, current_swimlane_id)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
-            "#
+            "#,
+            data.parent_id,
+            data.workspace_id,
+            data.title,
+            data.current_column_id,
+            data.current_swimlane_id
         )
-        .bind(data.parent_id)
-        .bind(data.workspace_id)
-        .bind(data.title)
-        .bind(data.current_column_id)
-        .bind(data.current_swimlane_id)
         .fetch_one(&mut *tx)
         .await?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO card_transitions (card_id, transition_type, to_column_id, payload)
             VALUES ($1, 'create', $2, $3)
             "#,
+            card.id,
+            card.current_column_id,
+            serde_json::json!({
+                "title": card.title,
+                "workspace_id": card.workspace_id
+            })
         )
-        .bind(card.id)
-        .bind(card.current_column_id)
-        .bind(serde_json::json!({
-            "title": card.title,
-            "workspace_id": card.workspace_id
-        }))
         .execute(&mut *tx)
         .await?;
 
@@ -493,19 +516,20 @@ impl Card {
         let mut tx = pool.begin().await?;
         let old_title = self.title.clone();
 
-        let updated = sqlx::query_as::<_, Card>(
+        let updated = sqlx::query_as!(
+            Card,
             "UPDATE cards SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+            new_title,
+            self.id
         )
-        .bind(new_title)
-        .bind(self.id)
         .fetch_one(&mut *tx)
         .await?;
 
-        sqlx::query(
-            "INSERT INTO card_transitions (card_id, transition_type, payload) VALUES ($1, 'update', $2)"
+        sqlx::query!(
+            "INSERT INTO card_transitions (card_id, transition_type, payload) VALUES ($1, 'update', $2)",
+            self.id,
+            serde_json::json!({ "previous_title": old_title, "new_title": updated.title })
         )
-        .bind(self.id)
-        .bind(serde_json::json!({ "previous_title": old_title, "new_title": updated.title }))
         .execute(&mut *tx)
         .await?;
 
@@ -523,42 +547,45 @@ impl Card {
         let mut tx = pool.begin().await?;
 
         // 1. SELECT FOR UPDATE to lock row
-        let current_card =
-            sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 FOR UPDATE")
-                .bind(self.id)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(|e| match e {
-                    sqlx::Error::RowNotFound => crate::AppError::NotFound,
-                    _ => crate::AppError::Database(e),
-                })?;
+        let current_card = sqlx::query_as!(
+            Card,
+            "SELECT * FROM cards WHERE id = $1 FOR UPDATE",
+            self.id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => crate::AppError::NotFound,
+            _ => crate::AppError::Database(e),
+        })?;
 
         if current_card.is_blocked {
             return Ok(current_card);
         }
 
         // 2. Perform block update
-        let updated = sqlx::query_as::<_, Card>(
+        let updated = sqlx::query_as!(
+            Card,
             r#"
             UPDATE cards
             SET is_blocked = TRUE, blocked_by = $1, blocked_at = NOW(), blocked_reason = $2, updated_at = NOW()
             WHERE id = $3
             RETURNING *
             "#,
+            blocked_by,
+            reason,
+            self.id
         )
-        .bind(blocked_by)
-        .bind(&reason)
-        .bind(self.id)
         .fetch_one(&mut *tx)
         .await?;
 
         // 3. Insert transition
-        sqlx::query(
-            "INSERT INTO card_transitions (card_id, user_id, transition_type, payload) VALUES ($1, $2, 'block', $3)"
+        sqlx::query!(
+            "INSERT INTO card_transitions (card_id, user_id, transition_type, payload) VALUES ($1, $2, 'block', $3)",
+            self.id,
+            blocked_by,
+            serde_json::json!({ "reason": reason })
         )
-        .bind(self.id)
-        .bind(blocked_by)
-        .bind(serde_json::json!({ "reason": reason }))
         .execute(&mut *tx)
         .await?;
 
@@ -575,39 +602,42 @@ impl Card {
         let mut tx = pool.begin().await?;
 
         // 1. SELECT FOR UPDATE to lock row
-        let current_card =
-            sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 FOR UPDATE")
-                .bind(self.id)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(|e| match e {
-                    sqlx::Error::RowNotFound => crate::AppError::NotFound,
-                    _ => crate::AppError::Database(e),
-                })?;
+        let current_card = sqlx::query_as!(
+            Card,
+            "SELECT * FROM cards WHERE id = $1 FOR UPDATE",
+            self.id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => crate::AppError::NotFound,
+            _ => crate::AppError::Database(e),
+        })?;
 
         if !current_card.is_blocked {
             return Ok(current_card);
         }
 
         // 2. Perform unblock update
-        let updated = sqlx::query_as::<_, Card>(
+        let updated = sqlx::query_as!(
+            Card,
             r#"
             UPDATE cards
             SET is_blocked = FALSE, blocked_by = NULL, blocked_at = NULL, blocked_reason = NULL, updated_at = NOW()
             WHERE id = $1
             RETURNING *
             "#,
+            self.id
         )
-        .bind(self.id)
         .fetch_one(&mut *tx)
         .await?;
 
         // 3. Insert transition
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO card_transitions (card_id, user_id, transition_type) VALUES ($1, $2, 'unblock')",
+            self.id,
+            unblocked_by
         )
-        .bind(self.id)
-        .bind(unblocked_by)
         .execute(&mut *tx)
         .await?;
 
@@ -620,10 +650,11 @@ impl Card {
         pool: &sqlx::PgPool,
         card_id: Uuid,
     ) -> Result<Vec<BlockComment>, crate::AppError> {
-        let comments = sqlx::query_as::<_, BlockComment>(
+        let comments = sqlx::query_as!(
+            BlockComment,
             "SELECT * FROM card_block_comments WHERE card_id = $1 ORDER BY created_at ASC",
+            card_id
         )
-        .bind(card_id)
         .fetch_all(pool)
         .await?;
 
@@ -646,14 +677,17 @@ impl Card {
 
         let mut tx = pool.begin().await?;
 
-        let card = sqlx::query_as::<_, Card>("SELECT * FROM cards WHERE id = $1 FOR UPDATE")
-            .bind(card_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| match e {
-                sqlx::Error::RowNotFound => crate::AppError::NotFound,
-                _ => crate::AppError::Database(e),
-            })?;
+        let card = sqlx::query_as!(
+            Card,
+            "SELECT * FROM cards WHERE id = $1 FOR UPDATE",
+            card_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => crate::AppError::NotFound,
+            _ => crate::AppError::Database(e),
+        })?;
 
         if !card.is_blocked {
             return Err(crate::AppError::BadRequest(
@@ -661,16 +695,17 @@ impl Card {
             ));
         }
 
-        let comment = sqlx::query_as::<_, BlockComment>(
+        let comment = sqlx::query_as!(
+            BlockComment,
             r#"
             INSERT INTO card_block_comments (card_id, user_id, content)
             VALUES ($1, $2, $3)
             RETURNING *
             "#,
+            card_id,
+            user_id,
+            trimmed
         )
-        .bind(card_id)
-        .bind(user_id)
-        .bind(trimmed)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -682,17 +717,18 @@ impl Card {
     pub async fn archive(&self, pool: &sqlx::PgPool) -> Result<Self, crate::AppError> {
         let mut tx = pool.begin().await?;
 
-        let updated = sqlx::query_as::<_, Card>(
+        let updated = sqlx::query_as!(
+            Card,
             "UPDATE cards SET is_archived = TRUE, updated_at = NOW() WHERE id = $1 RETURNING *",
+            self.id
         )
-        .bind(self.id)
         .fetch_one(&mut *tx)
         .await?;
 
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'archive')",
+            self.id
         )
-        .bind(self.id)
         .execute(&mut *tx)
         .await?;
 
@@ -705,15 +741,14 @@ impl Card {
         let mut tx = pool.begin().await?;
 
         // Soft delete
-        sqlx::query("UPDATE cards SET deleted_at = NOW() WHERE id = $1")
-            .bind(self.id)
+        sqlx::query!("UPDATE cards SET deleted_at = NOW() WHERE id = $1", self.id)
             .execute(&mut *tx)
             .await?;
 
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'delete')",
+            self.id
         )
-        .bind(self.id)
         .execute(&mut *tx)
         .await?;
 
@@ -726,7 +761,8 @@ impl Card {
         pool: &sqlx::PgPool,
         root_id: Uuid,
     ) -> Result<CardHierarchy, crate::AppError> {
-        let rows = sqlx::query_as::<_, Card>(
+        let rows = sqlx::query_as!(
+            Card,
             r#"
             WITH RECURSIVE hierarchy AS (
                 -- Base case
@@ -743,9 +779,9 @@ impl Card {
             )
             SELECT id, parent_id, workspace_id, title, current_column_id, current_swimlane_id, assigned_user_id, is_blocked, blocked_by, blocked_at, blocked_reason, is_archived, deleted_at, created_at, updated_at
             FROM hierarchy
-            "#
+            "#,
+            root_id
         )
-        .bind(root_id)
         .fetch_all(pool)
         .await?;
 
@@ -804,8 +840,7 @@ impl Card {
 
         // First, perform a lightweight, non-locking select
         let card_workspace: (Uuid,) =
-            sqlx::query_as("SELECT workspace_id FROM cards WHERE id = $1")
-                .bind(card_id)
+            sqlx::query!("SELECT workspace_id FROM cards WHERE id = $1", card_id)
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(|e| match e {
@@ -818,11 +853,12 @@ impl Card {
         }
 
         // Then, lock the row using SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE
-        let card = sqlx::query_as::<_, Card>(
+        let card = sqlx::query_as!(
+            Card,
             "SELECT * FROM cards WHERE id = $1 AND workspace_id = $2 FOR UPDATE",
+            card_id,
+            workspace_id
         )
-        .bind(card_id)
-        .bind(workspace_id)
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| match e {
@@ -831,22 +867,24 @@ impl Card {
         })?;
 
         // 2. Determine target column's completed state
-        let target_col: (bool,) =
-            sqlx::query_as("SELECT is_done FROM columns WHERE id = $1 AND workspace_id = $2")
-                .bind(card.current_column_id)
-                .bind(workspace_id)
-                .fetch_one(&mut *tx)
-                .await?;
+        let target_col: (bool,) = sqlx::query!(
+            "SELECT is_done FROM columns WHERE id = $1 AND workspace_id = $2",
+            card.current_column_id,
+            workspace_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         let is_target_active = !target_col.0;
 
         if let Some(target_user) = assignee_id {
             // 3. Pessimistic lock on the user's membership to serialize parallel assignments
-            let member: crate::models::user::WorkspaceMember = sqlx::query_as(
-                "SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE"
+            let member: crate::models::user::WorkspaceMember = sqlx::query_as!(
+                crate::models::user::WorkspaceMember,
+                "SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE",
+                workspace_id,
+                target_user
             )
-            .bind(workspace_id)
-            .bind(target_user)
             .fetch_one(&mut *tx)
             .await
             .map_err(|e| match e {
@@ -859,7 +897,7 @@ impl Card {
                 if let Some(limit) = member.wip_limit {
                     if !override_limit || !is_admin {
                         // Count active cards assigned to this user in active columns
-                        let active_count: (i64,) = sqlx::query_as(
+                        let active_count: (i64,) = sqlx::query!(
                             r#"
                             SELECT COUNT(*)
                             FROM cards c
@@ -871,10 +909,10 @@ impl Card {
                               AND c.deleted_at IS NULL
                               AND c.id != $3
                             "#,
+                            target_user,
+                            workspace_id,
+                            card_id
                         )
-                        .bind(target_user)
-                        .bind(workspace_id)
-                        .bind(card_id)
                         .fetch_one(&mut *tx)
                         .await?;
 
@@ -896,17 +934,18 @@ impl Card {
         }
 
         // 5. Update card's assignee
-        let updated_card = sqlx::query_as::<_, Card>(
+        let updated_card = sqlx::query_as!(
+            Card,
             r#"
             UPDATE cards
             SET assigned_user_id = $1, updated_at = NOW()
             WHERE id = $2 AND workspace_id = $3
             RETURNING *
             "#,
+            assignee_id,
+            card_id,
+            workspace_id
         )
-        .bind(assignee_id)
-        .bind(card_id)
-        .bind(workspace_id)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -923,15 +962,16 @@ impl Card {
             "override_reason": override_reason
         });
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO card_transitions (card_id, user_id, transition_type, payload)
             VALUES ($1, $2, $3, $4)
             "#,
+            card_id,
+            actor_id,
+            transition_type,
+            payload
         )
-        .bind(card_id)
-        .bind(actor_id) // Transition actor
-        .bind(transition_type)
         .bind(payload)
         .execute(&mut *tx)
         .await?;
@@ -959,10 +999,10 @@ impl Card {
                 ));
             }
             "checklist_completed" => {
-                let uncompleted_count: (i64,) = sqlx::query_as(
-                    "SELECT COUNT(*) FROM card_checklists WHERE card_id = $1 AND is_completed = FALSE"
+                let uncompleted_count: (i64,) = sqlx::query!(
+                    "SELECT COUNT(*) FROM card_checklists WHERE card_id = $1 AND is_completed = FALSE",
+                    card.id
                 )
-                .bind(card.id)
                 .fetch_one(conn)
                 .await?;
 
@@ -981,15 +1021,15 @@ impl Card {
                 }
             }
             "subtasks_completed" => {
-                let active_children: (i64,) = sqlx::query_as(
+                let active_children: (i64,) = sqlx::query!(
                     r#"
                     SELECT COUNT(*)
                     FROM cards c
                     INNER JOIN columns col ON c.current_column_id = col.id
                     WHERE c.parent_id = $1 AND col.is_done = FALSE AND c.deleted_at IS NULL
                     "#,
+                    card.id
                 )
-                .bind(card.id)
                 .fetch_one(conn)
                 .await?;
 
