@@ -21,7 +21,7 @@ impl UserService {
         let password_owned = password.to_string();
 
         // 1. Check if user already exists
-        let email_exists = sqlx::query_scalar!(
+        let email_exists: bool = sqlx::query_scalar!(
             "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)",
             email_owned
         )
@@ -100,7 +100,7 @@ impl UserService {
         };
 
         // 2. Fetch credential password hash
-        let password_hash = sqlx::query_scalar!(
+        let password_hash: String = sqlx::query_scalar!(
             "SELECT password_hash FROM user_credentials WHERE user_id = $1",
             user.id
         )
