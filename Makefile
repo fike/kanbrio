@@ -73,7 +73,7 @@ test-e2e: ## Run End-to-End tests
 
 sqlx-prepare: ## Generate SQLx query journal (.sqlx/) for compile-time verification
 	@echo "Generating SQLx query journal..."
-	@DATABASE_URL="$(DATABASE_URL)" cargo sqlx prepare --manifest-path apps/api/Cargo.toml
+	@cd apps/api && DATABASE_URL="$(DATABASE_URL)" cargo sqlx prepare
 	@echo "Query journal generated in apps/api/.sqlx/"
 
 sqlx-offline: sqlx-prepare ## Enable SQLx offline mode for CI (generates .sqlx/ then documents usage)

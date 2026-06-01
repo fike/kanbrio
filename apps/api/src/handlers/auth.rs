@@ -84,7 +84,7 @@ pub struct MeResponse {
 pub struct UserWorkspace {
     pub id: Uuid,
     pub name: String,
-    pub role: String,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -599,22 +599,17 @@ async fn create_and_seed_workspace(
     let mut tx = pool.begin().await?;
 
     // 1. Insert Workspace
-    let row: (
-        Uuid,
-        String,
-        chrono::DateTime<chrono::Utc>,
-        chrono::DateTime<chrono::Utc>,
-    ) = sqlx::query!(
+    let row = sqlx::query!(
         "INSERT INTO workspaces (name) VALUES ($1) RETURNING id, name, created_at, updated_at",
         name
     )
     .fetch_one(&mut *tx)
     .await?;
 
-    let workspace_id = row.0;
-    let workspace_name = row.1;
-    let created_at = row.2;
-    let updated_at = row.3;
+    let workspace_id = row.id;
+    let workspace_name = row.name;
+    let created_at = row.created_at.unwrap_or_default();
+    let updated_at = row.updated_at.unwrap_or_default();
 
     tracing::debug!(
         "Workspace row inserted. ID: {}, name: '{}'",

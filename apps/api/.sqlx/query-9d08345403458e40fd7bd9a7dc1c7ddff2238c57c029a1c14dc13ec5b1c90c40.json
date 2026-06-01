@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT COUNT(*)\n                    FROM cards c\n                    INNER JOIN columns col ON c.current_column_id = col.id\n                    WHERE c.parent_id = $1 AND col.is_done = FALSE AND c.deleted_at IS NULL\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "9d08345403458e40fd7bd9a7dc1c7ddff2238c57c029a1c14dc13ec5b1c90c40"
+}

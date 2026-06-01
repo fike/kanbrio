@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO columns (workspace_id, title, position, is_done) VALUES ($1, 'To Do', 1, false), ($1, 'In Progress', 2, false), ($1, 'Done', 3, true)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1b3c77c48300f0dfbc5cb501fb50acd82022d13211e13b573d0515d976f5afb8"
+}

@@ -2,8 +2,6 @@ use kanbrio_api::models::board::{BoardState, Column, Swimlane};
 use kanbrio_api::models::card::{Card, CreateCard, MoveCard};
 use uuid::Uuid;
 
-use chrono::{DateTime, Utc};
-
 #[derive(Debug, sqlx::FromRow)]
 struct CardTransition {
     pub from_column_id: Option<Uuid>,

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'delete')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a76d758856baa041882cb8030590e23db1d4a641ee1626f5f1e1ebf3b8705709"
+}

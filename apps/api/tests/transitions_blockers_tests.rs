@@ -1,4 +1,4 @@
-use kanbrio_api::models::card::{BlockComment, Card, CreateCard, MoveCard};
+use kanbrio_api::models::card::{Card, CreateCard, MoveCard};
 use uuid::Uuid;
 
 #[sqlx::test]
@@ -224,7 +224,7 @@ async fn test_card_block_comments_thread(pool: sqlx::PgPool) -> anyhow::Result<(
     assert_eq!(c1.content, "Checking on resolution timeline");
 
     // Add a second comment
-    let c2 =
+    let _c2 =
         Card::add_block_comment(&pool, card.id, user_id, "ETA is tomorrow".to_string()).await?;
 
     // 5. Get comments, verify ordering is chronologically correct (created_at ASC)

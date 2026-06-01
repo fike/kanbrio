@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::models::user::User;
+use crate::models::user::{User, UserRow};
 use argon2::{
     Argon2, Params,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -21,12 +21,13 @@ impl UserService {
         let password_owned = password.to_string();
 
         // 1. Check if user already exists
-        let email_exists: bool = sqlx::query_scalar!(
+        let email_exists = sqlx::query_scalar!(
             "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)",
             email_owned
         )
         .fetch_one(pool)
-        .await?;
+        .await?
+        .unwrap_or(false);
 
         if email_exists {
             return Err(AppError::BadRequest(
@@ -51,14 +52,16 @@ impl UserService {
         // 3. Insert user & credentials in a transaction
         let mut tx = pool.begin().await?;
 
-        let user = sqlx::query_as!(
-            User,
+        let row = sqlx::query_as!(
+            UserRow,
             "INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *",
             name_owned,
             email_owned
         )
         .fetch_one(&mut *tx)
         .await?;
+
+        let user: User = row.into();
 
         sqlx::query!(
             "INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, $2)",
@@ -82,16 +85,16 @@ impl UserService {
         let password_owned = password.to_string();
 
         // 1. Fetch user by email
-        let user = sqlx::query_as!(
-            User,
+        let user_row = sqlx::query_as!(
+            UserRow,
             "SELECT id, email, name, avatar_url, created_at, updated_at FROM users WHERE email = $1",
             email_owned
         )
         .fetch_optional(pool)
         .await?;
 
-        let user = match user {
-            Some(u) => u,
+        let user: User = match user_row {
+            Some(r) => r.into(),
             None => {
                 return Err(AppError::Unauthorized(
                     "Invalid email or password".to_string(),
@@ -135,8 +138,8 @@ impl UserService {
         let avatar_url_owned = avatar_url.map(|s| s.to_string());
 
         // Upsert user based on email matching
-        let user = sqlx::query_as!(
-            User,
+        let user_row = sqlx::query_as!(
+            UserRow,
             "INSERT INTO users (email, name, avatar_url) \
              VALUES ($1, $2, $3) \
              ON CONFLICT (email) \
@@ -149,6 +152,6 @@ impl UserService {
         .fetch_one(pool)
         .await?;
 
-        Ok(user)
+        Ok(user_row.into())
     }
 }

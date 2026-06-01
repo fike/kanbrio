@@ -90,7 +90,7 @@ async fn authenticate_member(
     let user =
         crate::services::session_service::SessionService::validate_session(pool, &token).await?;
 
-    let member: (String,) = sqlx::query!(
+    let member = sqlx::query!(
         "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
         workspace_id,
         user.id
@@ -99,7 +99,7 @@ async fn authenticate_member(
     .await
     .map_err(|_| AppError::Forbidden)?;
 
-    Ok((user, member.0))
+    Ok((user, member.role))
 }
 
 #[tracing::instrument(skip(pool, headers))]
@@ -194,7 +194,7 @@ pub async fn get_block_comments(
     let _ = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // Verify card exists and belongs to the workspace
-    let card_exists: (bool,) = sqlx::query!(
+    let card_exists = sqlx::query!(
         "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)",
         card_id,
         workspace_id
@@ -202,7 +202,7 @@ pub async fn get_block_comments(
     .fetch_one(&pool)
     .await?;
 
-    if !card_exists.0 {
+    if card_exists.exists != Some(true) {
         return Err(AppError::NotFound);
     }
 
@@ -322,7 +322,7 @@ pub async fn create_checklist_item(
     let _ = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // Verify card exists in workspace
-    let card_exists: (bool,) = sqlx::query!(
+    let card_exists_row = sqlx::query!(
         "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)",
         card_id,
         workspace_id
@@ -330,7 +330,7 @@ pub async fn create_checklist_item(
     .fetch_one(&pool)
     .await?;
 
-    if !card_exists.0 {
+    if !card_exists_row.exists.unwrap_or(false) {
         return Err(AppError::NotFound);
     }
 
@@ -361,7 +361,7 @@ pub async fn update_checklist_item(
     let _ = authenticate_member(&pool, &headers, workspace_id).await?;
 
     // Verify item belongs to card, and card belongs to workspace
-    let item_exists: (bool,) = sqlx::query!(
+    let item_exists_row = sqlx::query!(
         r#"
         SELECT EXISTS(
             SELECT 1 FROM card_checklists c
@@ -376,7 +376,7 @@ pub async fn update_checklist_item(
     .fetch_one(&pool)
     .await?;
 
-    if !item_exists.0 {
+    if !item_exists_row.exists.unwrap_or(false) {
         return Err(AppError::NotFound);
     }
 

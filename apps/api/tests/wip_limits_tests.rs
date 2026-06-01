@@ -1,5 +1,4 @@
 use kanbrio_api::AppError;
-use kanbrio_api::models::board::{Column, Swimlane};
 use kanbrio_api::models::card::{Card, CreateCard, MoveCard};
 use uuid::Uuid;
 
