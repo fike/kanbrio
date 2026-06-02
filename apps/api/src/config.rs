@@ -28,7 +28,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             database_url: DatabaseUrl::new(
-                "postgres://postgres:password@localhost:5432/kanbrio", // pragma: allowlist secret
+                "postgres://postgres:password@localhost:5432/kanbrio", // pragma: allowlist secret — dev default only
             )
             .expect("default database URL should be valid"),
             host: "0.0.0.0".to_string(),
@@ -40,8 +40,8 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
-        let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/kanbrio".to_string()); // pragma: allowlist secret
+        let database_url =
+            std::env::var("DATABASE_URL").map_err(|_| ConfigError::MissingDatabaseUrl)?;
         let database_url = DatabaseUrl::new(&database_url)?;
 
         let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
@@ -127,6 +127,9 @@ fn parse_bool(value: &str) -> Option<bool> {
 pub enum ConfigError {
     #[error("Invalid database URL: {0}")]
     InvalidDatabaseUrl(String),
+
+    #[error("Missing required environment variable: DATABASE_URL")]
+    MissingDatabaseUrl,
 
     #[error("Invalid port value: {0}")]
     InvalidPort(String),
@@ -219,21 +222,30 @@ mod tests {
     }
 
     #[test]
-    fn app_config_from_env_uses_defaults_when_not_set() {
+    fn app_config_from_env_requires_database_url() {
         without_env_vars(&["DATABASE_URL", "HOST", "PORT", "LOG_LEVEL"], || {
-            let config = AppConfig::from_env().expect("should use defaults");
-            assert_eq!(config.host, "0.0.0.0");
-            assert_eq!(config.port, 3000);
-            assert_eq!(config.log_level, "info");
+            let config = AppConfig::from_env();
+            assert!(config.is_err());
         });
     }
 
     #[test]
     fn app_config_from_env_reads_port_from_env() {
-        with_env_var("PORT", "8080", || {
-            let config = AppConfig::from_env().expect("should parse port");
-            assert_eq!(config.port, 8080);
-        });
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let prev_db = env::var("DATABASE_URL").ok();
+        let prev_port = env::var("PORT").ok();
+        unsafe { env::set_var("DATABASE_URL", "postgres://u:p@localhost/db") }; // pragma: allowlist secret
+        unsafe { env::set_var("PORT", "8080") };
+        let config = AppConfig::from_env().expect("should parse port");
+        assert_eq!(config.port, 8080);
+        match prev_port {
+            Some(v) => unsafe { env::set_var("PORT", v) },
+            None => unsafe { env::remove_var("PORT") },
+        }
+        match prev_db {
+            Some(v) => unsafe { env::set_var("DATABASE_URL", v) },
+            None => unsafe { env::remove_var("DATABASE_URL") },
+        }
     }
 
     #[test]

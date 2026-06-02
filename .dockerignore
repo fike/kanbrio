@@ -1,0 +1,53 @@
+# Build context exclusions for Docker
+# Prevents sensitive and unnecessary files from entering the build context.
+
+# Version control
+.git
+.gitignore
+
+# Node.js
+node_modules
+**/node_modules
+dist
+**/dist
+
+# Rust
+target
+**/target
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Docker
+.docker
+.dockerignore
+
+# IDE / editors
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent / tooling data
+.beads
+.aitron
+.gemini
+.claude
+
+# Documentation (not needed in containers)
+docs
+**/*.md
+!README.md
+
+# Test data
+tests/fixtures
+
+# SQLx offline query data (rebuilt in container)
+.sqlx

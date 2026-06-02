@@ -1,0 +1,21 @@
+# Promtail configuration for Kanbrio
+# Ships Docker container logs to Loki.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: kanbrio
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: kanbrio
+          __path__: /var/lib/docker/containers/*/*-json.log

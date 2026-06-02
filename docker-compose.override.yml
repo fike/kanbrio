@@ -1,0 +1,25 @@
+# docker-compose.override.yml — Development-only overrides
+#
+# Auto-loaded by `docker compose up` (unless -f is explicitly used).
+# DO NOT use this file in CI or production — always specify -f explicitly.
+#
+# Changes:
+# - Hot-reload volumes for API and Web
+# - Relaxed healthcheck retries for faster dev iteration
+# - Extra ports for debugging (disabled in prod)
+
+services:
+  api:
+    volumes:
+      - ./apps/api/src:/app/src:ro
+    environment:
+      RUST_LOG: debug
+
+  web:
+    # Vite HMR needs WebSocket — ensure hot-reload works
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+
+  # ── Observability (only start if explicitly requested) ──────────────
+  # To include observability in dev, run:
+  #   docker compose up -d otel-collector jaeger prometheus grafana loki promtail

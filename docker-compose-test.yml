@@ -1,0 +1,27 @@
+# docker-compose-test.yml — Isolated test environment
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose-test.yml up -d
+#
+# This file provides throwaway services for testing. No persistent volumes.
+# Do NOT use with -f docker-compose.override.yml.
+
+services:
+  postgres:
+    container_name: kanbrio-postgres-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: kanbrio_test
+    # No volumes — ephemeral database
+    ports: []  # No port mapping — isolated to network
+
+  api:
+    container_name: kanbrio-api-test
+    environment:
+      DATABASE_URL: postgres://postgres:test_password@postgres:5432/kanbrio_test
+      RUST_LOG: warn
+    ports: []  # No port mapping — tests connect via network
+    depends_on:
+      postgres:
+        condition: service_healthy
