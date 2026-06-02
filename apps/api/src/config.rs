@@ -153,14 +153,26 @@ mod tests {
         }
     }
 
-    fn without_env_var(name: &str, f: impl FnOnce()) {
+    /// Helper to remove env vars atomically, run a closure, then restore them.
+    /// Accepts multiple names in a single call to avoid nested lock acquisition
+    /// (std::sync::Mutex is not reentrant, so nesting would deadlock).
+    fn without_env_vars(names: &[&str], f: impl FnOnce()) {
         let _guard = ENV_MUTEX.lock().unwrap();
-        let previous = env::var(name).ok();
-        unsafe { env::remove_var(name) };
-        f();
-        if let Some(v) = previous {
-            unsafe { env::set_var(name, v) };
+        let previous: Vec<(_, _)> = names.iter().map(|n| (*n, env::var(n).ok())).collect();
+        for (name, _) in &previous {
+            unsafe { env::remove_var(name) };
         }
+        f();
+        for (name, prev) in previous {
+            match prev {
+                Some(v) => unsafe { env::set_var(name, v) },
+                None => {}
+            }
+        }
+    }
+
+    fn without_env_var(name: &str, f: impl FnOnce()) {
+        without_env_vars(&[name], f)
     }
 
     // -- DatabaseUrl tests --
@@ -208,17 +220,11 @@ mod tests {
 
     #[test]
     fn app_config_from_env_uses_defaults_when_not_set() {
-        without_env_var("DATABASE_URL", || {
-            without_env_var("HOST", || {
-                without_env_var("PORT", || {
-                    without_env_var("LOG_LEVEL", || {
-                        let config = AppConfig::from_env().expect("should use defaults");
-                        assert_eq!(config.host, "0.0.0.0");
-                        assert_eq!(config.port, 3000);
-                        assert_eq!(config.log_level, "info");
-                    })
-                })
-            })
+        without_env_vars(&["DATABASE_URL", "HOST", "PORT", "LOG_LEVEL"], || {
+            let config = AppConfig::from_env().expect("should use defaults");
+            assert_eq!(config.host, "0.0.0.0");
+            assert_eq!(config.port, 3000);
+            assert_eq!(config.log_level, "info");
         });
     }
 
