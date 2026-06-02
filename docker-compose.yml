@@ -305,6 +305,7 @@ services:
       - ./docker/promtail-config.yaml:/etc/promtail/config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail-positions:/etc/promtail
     command: -config.file=/etc/promtail/config.yaml
     depends_on:
       - loki
@@ -333,6 +334,8 @@ volumes:
     name: kanbrio-grafana-data
   jaeger-data:
     name: kanbrio-jaeger-data
+  promtail-positions:
+    name: kanbrio-promtail-positions
 
 # ── Networks ─────────────────────────────────────────────────────────
 networks:
