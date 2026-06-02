@@ -1,8 +1,11 @@
+pub mod config;
 pub mod error;
 pub mod handlers;
+pub mod middleware;
 pub mod models;
 pub mod services;
 
+pub use config::{Feature, FeatureFlags};
 pub use error::AppError;
 
 use crate::handlers::auth::{
@@ -13,8 +16,10 @@ use crate::handlers::board::{
     delete_checklist_item, get_block_comments, get_board_state, get_card_history, move_card,
     set_user_wip_limit, unblock_card, update_checklist_item,
 };
+use crate::handlers::health::health;
 use axum::{
     Router,
+    extract::FromRef,
     routing::{get, post},
 };
 use tower_http::{
@@ -22,14 +27,40 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+/// Application state shared across all handlers.
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: sqlx::PgPool,
+    pub feature_flags: FeatureFlags,
+}
+
+impl FromRef<AppState> for sqlx::PgPool {
+    fn from_ref(state: &AppState) -> Self {
+        state.pool.clone()
+    }
+}
+
+impl FromRef<AppState> for FeatureFlags {
+    fn from_ref(state: &AppState) -> Self {
+        state.feature_flags.clone()
+    }
+}
+
+/// Build the application router with all routes and middleware.
 pub fn create_app(pool: sqlx::PgPool) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let state = AppState {
+        pool,
+        feature_flags: FeatureFlags::from_env(),
+    };
+
     Router::new()
         .route("/", get(|| async { "Kanbrio API" }))
+        .route("/health", get(health))
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
@@ -81,5 +112,5 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         )
         .layer(TraceLayer::new_for_http())
         .layer(cors)
-        .with_state(pool)
+        .with_state(state)
 }
