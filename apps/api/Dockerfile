@@ -11,6 +11,7 @@ RUN cargo new --bin kanbrio-api
 WORKDIR /usr/src/app/kanbrio-api
 
 COPY Cargo.toml Cargo.lock ./
+COPY .sqlx ./.sqlx
 
 # Cache dependencies
 RUN cargo build --release
@@ -19,14 +20,14 @@ RUN rm -f src/*.rs target/release/deps/kanbrio_api*
 # Copy actual source files
 COPY src ./src
 
-# Build for release
-RUN cargo build --release
+# Build for release (offline mode — uses .sqlx/ cache)
+RUN SQLX_OFFLINE=true cargo build --release
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
 
 # Install system runtime dependencies
-RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates libssl3 curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/app
 

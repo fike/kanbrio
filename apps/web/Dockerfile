@@ -8,7 +8,7 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/ui-core/package.json ./packages/ui-core/
 
 # Install dependencies for the workspace
-RUN npm ci
+RUN npm ci && apk add --no-cache curl
 
 # Copy the source code for the apps and shared packages
 COPY packages/ui-core ./packages/ui-core

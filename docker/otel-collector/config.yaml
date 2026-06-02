@@ -16,7 +16,11 @@ receivers:
         - job_name: "otel-collector"
           scrape_interval: 15s
           static_configs:
-            - targets: ["localhost:8888"]
+            - targets: ["localhost:8889"]
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
 
 processors:
   batch:
@@ -37,14 +41,15 @@ exporters:
 
   # Debug exporter for local development (logs traces to stdout)
   debug:
-    loglevel: info
+    verbosity: basic
 
-  # Prometheus metrics exporter
+  # Prometheus metrics exporter (exposes self-metrics)
   prometheus:
-    endpoint: "0.0.0.0:8888"
+    endpoint: "0.0.0.0:8889"
     namespace: "otel"
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]

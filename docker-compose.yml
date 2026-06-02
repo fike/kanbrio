@@ -182,9 +182,9 @@ services:
     image: otel/opentelemetry-collector-contrib:0.126.0
     container_name: kanbrio-otel-collector
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8888:8888"   # Prometheus metrics from collector itself
+      - "17431:4317"   # OTLP gRPC (mapped to avoid host conflicts)
+      - "17432:4318"   # OTLP HTTP
+      - "17433:8889"   # Prometheus metrics from collector itself
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -192,12 +192,6 @@ services:
       - jaeger
     networks:
       - kanbrio-observability
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:13133/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     deploy:
       resources:
         limits:
@@ -214,7 +208,6 @@ services:
     ports:
       - "16686:16686"  # Jaeger UI
       - "14268:14268"  # Accept spans (HTTP)
-      - "4317:4317"    # OTLP gRPC (backup, collector is primary)
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
       COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
