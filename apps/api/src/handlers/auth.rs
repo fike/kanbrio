@@ -84,7 +84,7 @@ pub struct MeResponse {
 pub struct UserWorkspace {
     pub id: Uuid,
     pub name: String,
-    pub role: String,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,13 +244,14 @@ pub async fn me(
 
     let user = SessionService::validate_session(&pool, &token).await?;
 
-    let workspaces = sqlx::query_as::<_, UserWorkspace>(
+    let workspaces = sqlx::query_as!(
+        UserWorkspace,
         "SELECT w.id, w.name, INITCAP(wm.role) AS role \
          FROM workspaces w \
          JOIN workspace_members wm ON w.id = wm.workspace_id \
          WHERE wm.user_id = $1",
+        user.id
     )
-    .bind(user.id)
     .fetch_all(&pool)
     .await?;
 
@@ -280,13 +281,14 @@ pub async fn workspaces(
 
     let user = SessionService::validate_session(&pool, &token).await?;
 
-    let workspaces = sqlx::query_as::<_, UserWorkspace>(
+    let workspaces = sqlx::query_as!(
+        UserWorkspace,
         "SELECT w.id, w.name, INITCAP(wm.role) AS role \
          FROM workspaces w \
          JOIN workspace_members wm ON w.id = wm.workspace_id \
          WHERE wm.user_id = $1",
+        user.id
     )
-    .bind(user.id)
     .fetch_all(&pool)
     .await?;
 
@@ -475,10 +477,10 @@ pub async fn oauth_callback(
     )
     .await?;
 
-    let existing_workspace = sqlx::query_scalar::<_, Uuid>(
+    let existing_workspace = sqlx::query_scalar!(
         "SELECT workspace_id FROM workspace_members WHERE user_id = $1 LIMIT 1",
+        user.id
     )
-    .bind(user.id)
     .fetch_optional(&pool)
     .await?;
 
@@ -597,22 +599,17 @@ async fn create_and_seed_workspace(
     let mut tx = pool.begin().await?;
 
     // 1. Insert Workspace
-    let row: (
-        Uuid,
-        String,
-        chrono::DateTime<chrono::Utc>,
-        chrono::DateTime<chrono::Utc>,
-    ) = sqlx::query_as(
+    let row = sqlx::query!(
         "INSERT INTO workspaces (name) VALUES ($1) RETURNING id, name, created_at, updated_at",
+        name
     )
-    .bind(name)
     .fetch_one(&mut *tx)
     .await?;
 
-    let workspace_id = row.0;
-    let workspace_name = row.1;
-    let created_at = row.2;
-    let updated_at = row.3;
+    let workspace_id = row.id;
+    let workspace_name = row.name;
+    let created_at = row.created_at.unwrap_or_default();
+    let updated_at = row.updated_at.unwrap_or_default();
 
     tracing::debug!(
         "Workspace row inserted. ID: {}, name: '{}'",
@@ -621,11 +618,11 @@ async fn create_and_seed_workspace(
     );
 
     // 2. Bind Creator as Admin in workspace_members (role must be lowercase 'admin')
-    sqlx::query(
+    sqlx::query!(
         "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'admin')",
+        workspace_id,
+        user_id
     )
-    .bind(workspace_id)
-    .bind(user_id)
     .execute(&mut *tx)
     .await?;
 
@@ -635,23 +632,23 @@ async fn create_and_seed_workspace(
     );
 
     // 3. Seed workflow columns ("To Do", "In Progress", "Done") with proper positions and is_done values
-    sqlx::query(
+    sqlx::query!(
         "INSERT INTO columns (workspace_id, title, position, is_done) VALUES \
          ($1, 'To Do', 1, false), \
          ($1, 'In Progress', 2, false), \
          ($1, 'Done', 3, true)",
+        workspace_id
     )
-    .bind(workspace_id)
     .execute(&mut *tx)
     .await?;
 
     tracing::debug!("Default workflow columns (To Do, In Progress, Done) seeded successfully");
 
     // 4. Seed default swimlane to ensure complete vertical and horizontal layout setup
-    sqlx::query(
+    sqlx::query!(
         "INSERT INTO swimlanes (workspace_id, title, position) VALUES ($1, 'Default Swimlane', 0)",
+        workspace_id
     )
-    .bind(workspace_id)
     .execute(&mut *tx)
     .await?;
 

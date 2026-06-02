@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO card_transitions (card_id, transition_type) VALUES ($1, 'archive')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0cbba0ad78a8daca122e79a67809b4d9aee1ef6d588033e57da6daa60449e320"
+}

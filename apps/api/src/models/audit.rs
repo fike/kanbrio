@@ -11,10 +11,11 @@ pub struct CardTransition {
     pub transition_type: String,
     pub from_column_id: Option<Uuid>,
     pub to_column_id: Option<Uuid>,
+    pub reason_id: Option<Uuid>,
+    pub occurred_at: Option<DateTime<Utc>>,
     pub from_swimlane_id: Option<Uuid>,
     pub to_swimlane_id: Option<Uuid>,
     pub payload: Option<serde_json::Value>,
-    pub occurred_at: DateTime<Utc>,
 }
 
 impl CardTransition {
@@ -27,29 +28,30 @@ impl CardTransition {
         offset: i64,
     ) -> Result<Vec<Self>, crate::AppError> {
         // Security: Validate card belongs to workspace
-        let card_exists: (bool,) = sqlx::query_as(
+        let card_exists_row = sqlx::query!(
             "SELECT EXISTS(SELECT 1 FROM cards WHERE id = $1 AND workspace_id = $2)",
+            card_id,
+            workspace_id
         )
-        .bind(card_id)
-        .bind(workspace_id)
         .fetch_one(pool)
         .await?;
 
-        if !card_exists.0 {
+        if card_exists_row.exists != Some(true) {
             return Err(crate::AppError::Forbidden);
         }
 
-        let history = sqlx::query_as::<_, CardTransition>(
+        let history = sqlx::query_as!(
+            CardTransition,
             r#"
             SELECT * FROM card_transitions
             WHERE card_id = $1
             ORDER BY occurred_at DESC
             LIMIT $2 OFFSET $3
             "#,
+            card_id,
+            limit,
+            offset
         )
-        .bind(card_id)
-        .bind(limit)
-        .bind(offset)
         .fetch_all(pool)
         .await?;
 

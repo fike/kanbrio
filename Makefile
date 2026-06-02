@@ -1,6 +1,6 @@
 # Kanbrio - Local Development Makefile
 
-.PHONY: db-up db-down db-migrate db-seed setup dev test help docker-up docker-down docker-logs docker-build
+.PHONY: db-up db-down db-migrate db-seed setup dev test help docker-up docker-down docker-logs docker-build sqlx-prepare sqlx-offline
 
 export DATABASE_URL ?= postgres://postgres:password@localhost:5432/kanbrio # pragma: allowlist secret
 
@@ -68,6 +68,17 @@ test: ## Run all tests (backend and frontend)
 
 test-e2e: ## Run End-to-End tests
 	npm run test -w apps/e2e
+
+# --- SQLx Offline Mode (Story #19) ---
+
+sqlx-prepare: ## Generate SQLx query journal (.sqlx/) for compile-time verification
+	@echo "Generating SQLx query journal..."
+	@cd apps/api && DATABASE_URL="$(DATABASE_URL)" cargo sqlx prepare
+	@echo "Query journal generated in apps/api/.sqlx/"
+
+sqlx-offline: sqlx-prepare ## Enable SQLx offline mode for CI (generates .sqlx/ then documents usage)
+	@echo "SQLx offline mode ready."
+	@echo "Set SQLX_OFFLINE=true in CI environment or run with: SQLX_OFFLINE=true cargo build"
 
 # --- Help ---
 
