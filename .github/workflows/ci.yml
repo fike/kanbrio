@@ -49,6 +49,7 @@ jobs:
         working-directory: apps/api
         env:
           DATABASE_URL: postgres://postgres:password@localhost:5432/kanbrio_test # pragma: allowlist secret
+          SQLX_OFFLINE: "true"
 
       - name: Run Tests
         run: cargo test --all-targets
