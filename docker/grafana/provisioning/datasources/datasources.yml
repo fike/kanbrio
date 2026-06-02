@@ -1,0 +1,34 @@
+# Grafana datasource auto-provisioning for Kanbrio
+# These datasources are created automatically on startup.
+
+apiVersion: 1
+
+datasources:
+  # Prometheus - metrics storage
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+
+  # Loki - log aggregation
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 100
+
+  # Tempo/Jaeger - trace visualization via Jaeger UI directly
+  # Jaeger has its own UI on :16686; Grafana can also query it via Tempo datasource
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: true
+    jsonData:
+      traceIdLabel: "trace_id"

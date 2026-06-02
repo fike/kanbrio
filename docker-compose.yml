@@ -1,24 +1,50 @@
-version: "3.8"
+# Kanbrio Docker Compose — Application + Observability Stack
+# Issue: kanbrio-e2l.2 / GitHub #73
+#
+# Usage:
+#   docker compose up -d          # Start everything
+#   docker compose up -d postgres api web  # App services only
+#   docker compose up -d grafana  # Grafana only (port 3001)
+#
+# Networks:
+#   kanbrio-app          — Application services (Postgres, API, Web)
+#   kanbrio-observability — Observability services (Prometheus, Grafana, OTel, Jaeger, Loki)
+#
+# The API and Web services are connected to BOTH networks so they can
+# send metrics/traces/logs to the observability stack.
 
 services:
+  # =========================================================
+  # Application services
+  # =========================================================
+
   postgres:
     image: postgres:16-alpine
     container_name: kanbrio-postgres
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=kanbrio
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-password}"
+      POSTGRES_DB: "${POSTGRES_DB:-kanbrio}"
     volumes:
-      - .docker/pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     networks:
-      - kanbrio-network
+      - kanbrio-app
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
 
   api:
     build:
@@ -28,14 +54,32 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgres://postgres:password@postgres:5432/kanbrio
-      - HOST=0.0.0.0
-      - PORT=3000
+      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-kanbrio}"
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      # OpenTelemetry endpoint (kanbrio-e2l.4)
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      RUST_LOG: "${RUST_LOG:-info}"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - kanbrio-network
+      - kanbrio-app
+      - kanbrio-observability
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
 
   web:
     build:
@@ -45,12 +89,217 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - API_URL=http://api:3000
+      API_URL: "http://api:3000"
     depends_on:
       - api
     networks:
-      - kanbrio-network
+      - kanbrio-app
+      - kanbrio-observability
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5173 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  # =========================================================
+  # Observability services
+  # =========================================================
+
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    container_name: kanbrio-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    networks:
+      - kanbrio-observability
+      - kanbrio-app  # needed to reach api:3000 for scraping
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:12.0.0
+    container_name: kanbrio-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - kanbrio-observability
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.126.0
+    container_name: kanbrio-otel-collector
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics from collector itself
+    volumes:
+      - ./docker/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    command: ["--config=/etc/otelcol/config.yaml"]
+    depends_on:
+      - jaeger
+    networks:
+      - kanbrio-observability
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:13133/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60.0
+    container_name: kanbrio-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Accept spans (HTTP)
+      - "4317:4317"    # OTLP gRPC (backup, collector is primary)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
+    networks:
+      - kanbrio-observability
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:14269/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.3.0
+    container_name: kanbrio-loki
+    ports:
+      - "3100:3100"
+    command: "-config.file=/etc/loki/local-config.yaml"
+    volumes:
+      - loki-data:/loki
+    networks:
+      - kanbrio-observability
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: kanbrio-promtail
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/promtail-config.yaml:/etc/promtail/config.yaml:ro
+    networks:
+      - kanbrio-observability
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+    restart: unless-stopped
+
+# =========================================================
+# Networks
+# =========================================================
 
 networks:
-  kanbrio-network:
+  kanbrio-app:
     driver: bridge
+
+  kanbrio-observability:
+    driver: bridge
+
+# =========================================================
+# Volumes (named for persistence)
+# =========================================================
+
+volumes:
+  pgdata:
+  prometheus-data:
+  grafana-data:
+  loki-data:
