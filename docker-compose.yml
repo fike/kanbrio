@@ -1,56 +1,346 @@
-version: "3.8"
+# docker-compose.yml — Kanbrio production-grade stack
+#
+# Usage:
+#   docker compose up -d                # Full stack (prod-like)
+#   docker compose up -d api web        # App only (uses external pg)
+#   docker compose -f docker-compose.yml -f docker-compose-test.yml up -d  # Test profile
+#
+# Dev overrides live in docker-compose.override.yml (auto-loaded unless -f is used).
+#
+# Required: .env file with POSTGRES_PASSWORD, DATABASE_URL, etc.
+# See .env.example for the template.
 
 services:
+  # ── Database ───────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: kanbrio-postgres
-    ports:
-      - "5432:5432"
+    restart: unless-stopped
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=kanbrio
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"  # Localhost only — not exposed to network
     volumes:
-      - .docker/pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     networks:
-      - kanbrio-network
+      - kanbrio-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    mem_limit: 512M
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── API ────────────────────────────────────────────────────────────
   api:
     build:
-      context: apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: kanbrio-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      RUST_LOG: ${RUST_LOG:-info}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kanbrio-api
     ports:
       - "3000:3000"
-    environment:
-      - DATABASE_URL=postgres://postgres:password@postgres:5432/kanbrio
-      - HOST=0.0.0.0
-      - PORT=3000
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - kanbrio-network
+      - kanbrio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    mem_limit: 512M
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── Web ────────────────────────────────────────────────────────────
   web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: node:20-alpine
     container_name: kanbrio-web
+    restart: unless-stopped
+    working_dir: /app
+    command: ["npm", "run", "dev", "-w", "apps/web", "--", "--host", "0.0.0.0"]
+    volumes:
+      - .:/app
     ports:
       - "5173:5173"
-    environment:
-      - API_URL=http://api:3000
     depends_on:
       - api
     networks:
-      - kanbrio-network
+      - kanbrio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5173/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    mem_limit: 256M
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── Observability ──────────────────────────────────────────────────
+
+  # OTel Collector — receives OTLP from API, exports to Jaeger + Prometheus
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.106.0
+    container_name: kanbrio-otel
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector/config.yaml"]
+    volumes:
+      - ./docker/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics exporter
+    depends_on:
+      - jaeger
+    networks:
+      - kanbrio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:13133/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    mem_limit: 256M
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prometheus — scrapes metrics from API + OTel Collector
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: kanbrio-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - kanbrio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    mem_limit: 256M
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Grafana — visualizations backed by Prometheus + Loki + Jaeger
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    container_name: kanbrio-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"  # 3001 to avoid collision with API on 3000
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - kanbrio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    mem_limit: 256M
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Jaeger — distributed tracing backend
+  jaeger:
+    image: jaegertracing/all-in-one:1.57.0
+    container_name: kanbrio-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: badger
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_VALUE: /badger/data
+      BADGER_DIRECTORY_KEY: /badger/key
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger thrift collector
+      - "14250:14250"  # Jaeger gRPC
+    volumes:
+      - jaeger-data:/badger
+    networks:
+      - kanbrio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:14269/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    mem_limit: 256M
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Loki — log aggregation
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: kanbrio-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - kanbrio-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/loki/api/v1/query?q=up || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    mem_limit: 256M
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Promtail — ship Docker container logs to Loki
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: kanbrio-promtail
+    restart: unless-stopped
+    volumes:
+      - ./docker/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail-positions:/etc/promtail
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
+    networks:
+      - kanbrio-internal
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    mem_limit: 128M
+    cpus: 0.25
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ── Volumes ──────────────────────────────────────────────────────────
+volumes:
+  pgdata:
+    name: kanbrio-pgdata
+  prometheus-data:
+    name: kanbrio-prometheus-data
+  grafana-data:
+    name: kanbrio-grafana-data
+  jaeger-data:
+    name: kanbrio-jaeger-data
+  promtail-positions:
+    name: kanbrio-promtail-positions
+
+# ── Networks ─────────────────────────────────────────────────────────
 networks:
-  kanbrio-network:
+  kanbrio-internal:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
