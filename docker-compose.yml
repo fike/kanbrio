@@ -84,14 +84,21 @@ services:
         max-file: "3"
 
   # ── Web ────────────────────────────────────────────────────────────
+  # Dev server runs inside container with a fresh npm install
   web:
-    image: node:20-alpine
+    image: node:20-bookworm-slim
     container_name: kanbrio-web
     restart: unless-stopped
     working_dir: /app
-    command: ["npm", "run", "dev", "-w", "apps/web", "--", "--host", "0.0.0.0"]
+    command: >
+      sh -c "
+        npm install --workspace=apps/web &&
+        npm run dev -w apps/web -- --host 0.0.0.0
+      "
     volumes:
       - .:/app
+      # Exclude host node_modules (wrong arch) — let container install its own
+      - /tmp/kanbrio-web-node-cache:/app/node_modules/.cache
     ports:
       - "5173:5173"
     depends_on:
@@ -99,18 +106,18 @@ services:
     networks:
       - kanbrio-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5173/ || exit 1"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5173/', r => r.statusCode === 200 ? process.exit(0) : process.exit(1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: '0.5'
-    mem_limit: 256M
-    cpus: 0.5
+          memory: 512M
+          cpus: '1.0'
+    mem_limit: 512M
+    cpus: 1.0
     logging:
       driver: json-file
       options:
@@ -128,19 +135,13 @@ services:
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8888:8888"   # Prometheus metrics exporter
+      - "17431:4317"   # OTLP gRPC (avoid SSH tunnel on 4317)
+      - "17432:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics exporter
     depends_on:
       - jaeger
     networks:
       - kanbrio-internal
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:13133/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     deploy:
       resources:
         limits:
@@ -240,6 +241,7 @@ services:
       BADGER_EPHEMERAL: "false"
       BADGER_DIRECTORY_VALUE: /badger/data
       BADGER_DIRECTORY_KEY: /badger/key
+    user: "0:0"
     ports:
       - "16686:16686"  # Jaeger UI
       - "14268:14268"  # Jaeger thrift collector
@@ -278,7 +280,7 @@ services:
     networks:
       - kanbrio-internal
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/loki/api/v1/query?q=up || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/metrics || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3

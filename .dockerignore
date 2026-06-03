@@ -49,5 +49,4 @@ docs
 # Test data
 tests/fixtures
 
-# SQLx offline query data (rebuilt in container)
-.sqlx
+# SQLx offline query cache — needed for SQLX_OFFLINE builds
