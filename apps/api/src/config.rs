@@ -167,9 +167,8 @@ mod tests {
         }
         f();
         for (name, prev) in previous {
-            match prev {
-                Some(v) => unsafe { env::set_var(name, v) },
-                None => {}
+            if let Some(v) = prev {
+                unsafe { env::set_var(name, v) }
             }
         }
     }
