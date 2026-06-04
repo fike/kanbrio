@@ -6,17 +6,11 @@ import { Login } from './components/Login/Login';
 import { Register } from './components/Register/Register';
 import { WorkspaceSelector } from './components/WorkspaceSelector/WorkspaceSelector';
 import Board from './components/Board/Board';
-import ConnectionStatus from './components/ConnectionStatus';
-import { useWebSocket } from './hooks/useWebSocket';
 
 export function WorkspaceLayout() {
   const auth = useAuth();
   const params = useParams();
   console.log('[WorkspaceLayout] Rendered with params:', JSON.stringify(params));
-
-  // Connect WebSocket for real-time board events
-  const workspaceId = params.workspace_id || '';
-  const ws = useWebSocket(workspaceId);
 
   return (
     <ProtectedRoute>
@@ -60,9 +54,6 @@ export function WorkspaceLayout() {
             <Board workspaceId={params.workspace_id || ''} />
           </main>
         </div>
-
-        {/* Real-time connection status indicator */}
-        <ConnectionStatus status={ws.status} reconnectCount={ws.reconnectCount} />
       </div>
     </ProtectedRoute>
   );
