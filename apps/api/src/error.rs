@@ -40,6 +40,9 @@ pub enum AppError {
 
     #[error("Too many requests: {0}")]
     TooManyRequests(String),
+
+    #[error("WebSocket error: {0}")]
+    WebSocket(String),
 }
 
 impl IntoResponse for AppError {
@@ -95,6 +98,7 @@ impl IntoResponse for AppError {
             AppError::TooManyRequests(ref msg) => {
                 (StatusCode::TOO_MANY_REQUESTS, msg.clone(), None)
             }
+            AppError::WebSocket(ref msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone(), None),
         };
 
         let mut body = json!({

@@ -4,9 +4,11 @@ pub mod handlers;
 pub mod middleware;
 pub mod models;
 pub mod services;
+pub mod websocket;
 
 pub use config::{Feature, FeatureFlags};
 pub use error::AppError;
+pub use websocket::WorkspaceHub;
 
 use crate::handlers::auth::{
     create_workspace, login, logout, me, oauth_callback, oauth_redirect, register, workspaces,
@@ -22,16 +24,19 @@ use axum::{
     extract::FromRef,
     routing::{get, post},
 };
+use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
+use websocket::ws_upgrade;
 
 /// Application state shared across all handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: sqlx::PgPool,
     pub feature_flags: FeatureFlags,
+    pub ws_hub: Arc<WorkspaceHub>,
 }
 
 impl FromRef<AppState> for sqlx::PgPool {
@@ -46,6 +51,12 @@ impl FromRef<AppState> for FeatureFlags {
     }
 }
 
+impl FromRef<AppState> for Arc<WorkspaceHub> {
+    fn from_ref(state: &AppState) -> Self {
+        state.ws_hub.clone()
+    }
+}
+
 /// Build the application router with all routes and middleware.
 pub fn create_app(pool: sqlx::PgPool) -> Router {
     let cors = CorsLayer::new()
@@ -53,9 +64,18 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let ws_hub = Arc::new(WorkspaceHub::new());
+
+    // Start the background sweep task for stale WS channels
+    let sweep_hub = ws_hub.clone();
+    tokio::task::spawn(async move {
+        sweep_hub.spawn_cleanup_loop(5).await;
+    });
+
     let state = AppState {
         pool,
         feature_flags: FeatureFlags::from_env(),
+        ws_hub,
     };
 
     Router::new()
@@ -110,6 +130,8 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
             "/api/workspaces/:workspace_id/cards/:card_id/checklists/:checklist_id",
             axum::routing::delete(delete_checklist_item),
         )
+        // WebSocket endpoint
+        .route("/ws/workspaces/:workspace_id", get(ws_upgrade))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)
