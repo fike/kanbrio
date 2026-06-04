@@ -2,12 +2,15 @@ use crate::AppError;
 use crate::models::audit::CardTransition;
 use crate::models::board::BoardState;
 use crate::models::card::{Card, ChecklistItem, CreateCard, MoveCard};
+use crate::websocket::BoardEvent;
 use axum::{
     Json,
     extract::{Path, Query, State},
 };
 use serde::Deserialize;
 use sqlx::PgPool;
+#[allow(unused_imports)]
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -130,9 +133,10 @@ pub async fn get_board_state(
     Ok(Json(state))
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn block_card(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<BlockCardPayload>,
@@ -155,12 +159,24 @@ pub async fn block_card(
 
     // 2. Perform block passing user.id
     let updated = card.block(&pool, user.id, payload.reason).await?;
+
+    // Publish WS event
+    ws_hub
+        .publish(
+            workspace_id,
+            BoardEvent::CardBlocked {
+                card: updated.clone(),
+            },
+        )
+        .await;
+
     Ok(Json(updated))
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, ws_hub, headers))]
 pub async fn unblock_card(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Card>, AppError> {
@@ -182,6 +198,17 @@ pub async fn unblock_card(
 
     // 2. Perform unblock passing user.id
     let updated = card.unblock(&pool, user.id).await?;
+
+    // Publish WS event
+    ws_hub
+        .publish(
+            workspace_id,
+            BoardEvent::CardUnblocked {
+                card: updated.clone(),
+            },
+        )
+        .await;
+
     Ok(Json(updated))
 }
 
@@ -210,9 +237,10 @@ pub async fn get_block_comments(
     Ok(Json(comments))
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn create_block_comment(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<crate::models::card::BlockCommentPayload>,
@@ -220,12 +248,24 @@ pub async fn create_block_comment(
     let (user, _) = authenticate_member(&pool, &headers, workspace_id).await?;
 
     let comment = Card::add_block_comment(&pool, card_id, user.id, payload.content).await?;
+
+    // Publish WS event
+    ws_hub
+        .publish(
+            workspace_id,
+            BoardEvent::BlockCommentAdded {
+                comment: comment.clone(),
+            },
+        )
+        .await;
+
     Ok(Json(comment))
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn move_card(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<MoveCardPayload>,
@@ -250,6 +290,11 @@ pub async fn move_card(
         },
     )
     .await?;
+
+    // Publish WS event
+    ws_hub
+        .publish(workspace_id, BoardEvent::CardMoved { card: card.clone() })
+        .await;
 
     Ok(Json(card))
 }
@@ -286,9 +331,10 @@ pub async fn set_user_wip_limit(
     Ok(axum::http::StatusCode::OK)
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn assign_card(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<AssignCard>,
@@ -309,12 +355,21 @@ pub async fn assign_card(
     )
     .await?;
 
+    // Publish WS event
+    ws_hub
+        .publish(
+            workspace_id,
+            BoardEvent::CardAssigned { card: card.clone() },
+        )
+        .await;
+
     Ok(Json(card))
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn create_checklist_item(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<CreateChecklistItemPayload>,
@@ -348,12 +403,21 @@ pub async fn create_checklist_item(
     .fetch_one(&pool)
     .await?;
 
+    // Publish WS event
+    ws_hub
+        .publish(
+            workspace_id,
+            BoardEvent::ChecklistItemAdded { item: item.clone() },
+        )
+        .await;
+
     Ok(Json(item))
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn update_checklist_item(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id, checklist_id)): Path<(Uuid, Uuid, Uuid)>,
     Json(payload): Json<UpdateChecklistItemPayload>,
@@ -423,12 +487,23 @@ pub async fn update_checklist_item(
     .fetch_one(&pool)
     .await?;
 
+    // Publish WS event
+    ws_hub
+        .publish(
+            workspace_id,
+            BoardEvent::ChecklistItemUpdated {
+                item: updated.clone(),
+            },
+        )
+        .await;
+
     Ok(Json(updated))
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn delete_checklist_item(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path((workspace_id, card_id, checklist_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<axum::http::StatusCode, AppError> {
@@ -454,12 +529,24 @@ pub async fn delete_checklist_item(
         return Err(AppError::NotFound);
     }
 
+    // Publish WS event
+    ws_hub
+        .publish(
+            workspace_id,
+            BoardEvent::ChecklistItemDeleted {
+                card_id,
+                checklist_id,
+            },
+        )
+        .await;
+
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
-#[tracing::instrument(skip(pool, headers))]
+#[tracing::instrument(skip(pool, headers, ws_hub))]
 pub async fn create_card(
     State(pool): State<PgPool>,
+    State(ws_hub): State<Arc<crate::websocket::WorkspaceHub>>,
     headers: axum::http::header::HeaderMap,
     Path(workspace_id): Path<Uuid>,
     Json(payload): Json<CreateCardPayload>,
@@ -484,6 +571,11 @@ pub async fn create_card(
         },
     )
     .await?;
+
+    // Publish WS event
+    ws_hub
+        .publish(workspace_id, BoardEvent::CardCreated { card: card.clone() })
+        .await;
 
     Ok((axum::http::StatusCode::CREATED, Json(card)))
 }
