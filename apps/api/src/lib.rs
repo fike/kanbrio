@@ -19,6 +19,9 @@ use crate::handlers::board::{
     set_user_wip_limit, unblock_card, update_checklist_item,
 };
 use crate::handlers::health::health;
+use crate::handlers::observability::{
+    init_metrics, init_start_time, observability_health, observability_metrics, track_metrics,
+};
 use axum::{
     Router,
     extract::FromRef,
@@ -59,6 +62,10 @@ impl FromRef<AppState> for Arc<WorkspaceHub> {
 
 /// Build the application router with all routes and middleware.
 pub fn create_app(pool: sqlx::PgPool) -> Router {
+    // Initialize observability startup stats
+    init_start_time();
+    let _ = init_metrics();
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -81,6 +88,8 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
     Router::new()
         .route("/", get(|| async { "Kanbrio API" }))
         .route("/health", get(health))
+        .route("/api/observability/health", get(observability_health))
+        .route("/api/observability/metrics", get(observability_metrics))
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
@@ -132,6 +141,7 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         )
         // WebSocket endpoint
         .route("/ws/workspaces/:workspace_id", get(ws_upgrade))
+        .layer(axum::middleware::from_fn(track_metrics))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

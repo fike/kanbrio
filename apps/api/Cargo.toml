@@ -22,6 +22,11 @@ argon2 = "0.5"
 rand = "0.8"
 reqwest = { version = "0.12", features = ["json"] }
 
+# Observability Metrics & System
+metrics = "0.22"
+metrics-exporter-prometheus = "0.13"
+sysinfo = { version = "0.30", default-features = false }
+
 [dev-dependencies]
 tower = { version = "0.4", features = ["util"] }
 http-body-util = "0.1"
