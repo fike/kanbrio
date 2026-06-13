@@ -141,7 +141,7 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         )
         // WebSocket endpoint
         .route("/ws/workspaces/:workspace_id", get(ws_upgrade))
-        .layer(axum::middleware::from_fn(track_metrics))
+        .route_layer(axum::middleware::from_fn(track_metrics))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

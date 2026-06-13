@@ -11,11 +11,14 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
 use sysinfo::{System, get_current_pid};
 
 static START_TIME: OnceLock<Instant> = OnceLock::new();
 static METRICS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
+static MEMORY_USED_BYTES: AtomicU64 = AtomicU64::new(0);
+static CPU_USAGE_PERCENT: AtomicU32 = AtomicU32::new(0);
 
 /// Initialize the start time of the server.
 pub fn init_start_time() {
@@ -25,6 +28,23 @@ pub fn init_start_time() {
 /// Initialize the Prometheus recorder.
 pub fn init_metrics() -> &'static PrometheusHandle {
     METRICS_HANDLE.get_or_init(|| {
+        // Spawn background task to periodically update system metrics
+        tokio::spawn(async {
+            let mut sys = System::new();
+            if let Ok(pid) = get_current_pid() {
+                loop {
+                    sys.refresh_process(pid);
+                    if let Some(process) = sys.process(pid) {
+                        let mem = process.memory(); // sysinfo >=0.26 returns bytes directly
+                        let cpu = process.cpu_usage();
+                        MEMORY_USED_BYTES.store(mem, Ordering::Relaxed);
+                        CPU_USAGE_PERCENT.store(cpu.to_bits(), Ordering::Relaxed);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                }
+            }
+        });
+
         PrometheusBuilder::new()
             .install_recorder()
             .expect("failed to install Prometheus recorder")
@@ -80,18 +100,9 @@ pub async fn observability_health(State(pool): State<PgPool>) -> impl IntoRespon
             let active_connections = total_connections.saturating_sub(idle_connections as u32);
             let max_connections = pool.options().get_max_connections();
 
-            // Retrieve system memory and CPU stats
-            let mut memory_used_bytes = 0;
-            let mut cpu_usage_percent = 0.0;
-
-            let mut sys = System::new();
-            if let Ok(pid) = get_current_pid() {
-                sys.refresh_process(pid);
-                if let Some(process) = sys.process(pid) {
-                    memory_used_bytes = process.memory() * 1024; // KB to bytes
-                    cpu_usage_percent = process.cpu_usage();
-                }
-            }
+            // Retrieve cached system memory and CPU stats
+            let memory_used_bytes = MEMORY_USED_BYTES.load(Ordering::Relaxed);
+            let cpu_usage_percent = f32::from_bits(CPU_USAGE_PERCENT.load(Ordering::Relaxed));
 
             (
                 StatusCode::OK,
@@ -112,17 +123,20 @@ pub async fn observability_health(State(pool): State<PgPool>) -> impl IntoRespon
             )
                 .into_response()
         }
-        Err(e) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(DeepHealthErrorResponse {
-                status: "unhealthy".to_string(),
-                error: format!("Database connection verification failed: {}", e),
-                database: DatabaseErrorInfo {
-                    status: "disconnected".to_string(),
-                },
-            }),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!("Observability database health check failed: {:?}", e);
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(DeepHealthErrorResponse {
+                    status: "unhealthy".to_string(),
+                    error: "Database connection verification failed".to_string(),
+                    database: DatabaseErrorInfo {
+                        status: "disconnected".to_string(),
+                    },
+                }),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -138,15 +152,9 @@ pub async fn observability_metrics(State(pool): State<PgPool>) -> impl IntoRespo
     gauge!("db_pool_connections_active").set(active as f64);
     gauge!("db_pool_connections_idle").set(idle as f64);
 
-    // Refresh and set system metrics
-    let mut sys = System::new();
-    if let Ok(pid) = get_current_pid() {
-        sys.refresh_process(pid);
-        if let Some(process) = sys.process(pid) {
-            let memory_used_bytes = process.memory() * 1024;
-            gauge!("system_memory_used_bytes").set(memory_used_bytes as f64);
-        }
-    }
+    // Set cached system metrics
+    let memory_used_bytes = MEMORY_USED_BYTES.load(Ordering::Relaxed);
+    gauge!("system_memory_used_bytes").set(memory_used_bytes as f64);
 
     (
         [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
@@ -161,7 +169,7 @@ pub async fn track_metrics(req: Request<Body>, next: Next) -> Response {
         .extensions()
         .get::<MatchedPath>()
         .map(|matched| matched.as_str().to_string())
-        .unwrap_or_else(|| req.uri().path().to_string());
+        .unwrap_or_else(|| "unmatched".to_string());
     let method = req.method().to_string();
 
     let response = next.run(req).await;
