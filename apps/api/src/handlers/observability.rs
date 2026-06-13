@@ -8,12 +8,143 @@ use axum::{
 };
 use metrics::{counter, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use opentelemetry::global;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::trace::{self, Sampler};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
 use sysinfo::{System, get_current_pid};
+use tracing::Instrument;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing_subscriber::prelude::*;
+
+static TRACING_INIT: std::sync::Once = std::sync::Once::new();
+
+/// Initialize the OpenTelemetry tracer and tracing subscriber.
+pub fn init_tracing() {
+    TRACING_INIT.call_once(|| {
+        global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
+
+        let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+            .unwrap_or_else(|_| {
+                if std::path::Path::new("/.dockerenv").exists() {
+                    "http://kanbrio-jaeger:4317".to_string()
+                } else {
+                    "http://localhost:4317".to_string()
+                }
+            });
+
+        let tracer_res = opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(
+                opentelemetry_otlp::new_exporter()
+                    .tonic()
+                    .with_endpoint(&endpoint),
+            )
+            .with_trace_config(
+                trace::config()
+                    .with_sampler(Sampler::AlwaysOn)
+                    .with_resource(opentelemetry_sdk::Resource::new(vec![
+                        opentelemetry::KeyValue::new("service.name", "kanbrio-api"),
+                    ])),
+            )
+            .install_batch(opentelemetry_sdk::runtime::Tokio);
+
+        let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+        let use_json = std::env::var("KANBRIO_LOG_FORMAT")
+            .map(|v| v.to_lowercase() == "json")
+            .unwrap_or_else(|_| std::path::Path::new("/.dockerenv").exists());
+
+        let registry = tracing_subscriber::registry().with(env_filter);
+
+        match tracer_res {
+            Ok(tracer) => {
+                if use_json {
+                    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+                    let fmt_layer = tracing_subscriber::fmt::layer().json();
+                    let _ = registry.with(fmt_layer).with(otel_layer).try_init();
+                } else {
+                    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+                    let fmt_layer = tracing_subscriber::fmt::layer();
+                    let _ = registry.with(fmt_layer).with(otel_layer).try_init();
+                }
+            }
+            Err(err) => {
+                eprintln!(
+                    "Failed to initialize OpenTelemetry OTLP exporter: {}, falling back to standard tracing",
+                    err
+                );
+                if use_json {
+                    let fmt_layer = tracing_subscriber::fmt::layer().json();
+                    let _ = registry.with(fmt_layer).try_init();
+                } else {
+                    let fmt_layer = tracing_subscriber::fmt::layer();
+                    let _ = registry.with(fmt_layer).try_init();
+                }
+            }
+        }
+    });
+}
+
+struct HeaderExtractor<'a>(&'a axum::http::HeaderMap);
+
+impl<'a> opentelemetry::propagation::Extractor for HeaderExtractor<'a> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|key| key.as_str()).collect()
+    }
+}
+
+struct HeaderInjector<'a>(&'a mut axum::http::HeaderMap);
+
+impl<'a> opentelemetry::propagation::Injector for HeaderInjector<'a> {
+    fn set(&mut self, key: &str, value: String) {
+        if let (Ok(name), Ok(val)) = (
+            axum::http::HeaderName::from_bytes(key.as_bytes()),
+            axum::http::HeaderValue::from_str(&value),
+        ) {
+            self.0.insert(name, val);
+        }
+    }
+}
+
+/// Middleware to extract trace context from incoming requests, propagate it, and inject it into response headers.
+pub async fn trace_context(req: Request<Body>, next: Next) -> Response {
+    let parent_cx = global::get_text_map_propagator(|propagator| {
+        propagator.extract(&HeaderExtractor(req.headers()))
+    });
+
+    let span = tracing::info_span!(
+        "http.request",
+        method = %req.method(),
+        uri = %req.uri().path(),
+        status_code = tracing::field::Empty,
+    );
+    span.set_parent(parent_cx);
+
+    let mut response = async move { next.run(req).await }
+        .instrument(span.clone())
+        .await;
+
+    let context = span.context();
+    let mut headers = axum::http::HeaderMap::new();
+    global::get_text_map_propagator(|propagator| {
+        propagator.inject_context(&context, &mut HeaderInjector(&mut headers));
+    });
+
+    response.headers_mut().extend(headers);
+    span.record("status_code", response.status().as_u16());
+
+    response
+}
 
 static START_TIME: OnceLock<Instant> = OnceLock::new();
 static METRICS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();

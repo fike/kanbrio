@@ -20,7 +20,8 @@ use crate::handlers::board::{
 };
 use crate::handlers::health::health;
 use crate::handlers::observability::{
-    init_metrics, init_start_time, observability_health, observability_metrics, track_metrics,
+    init_metrics, init_start_time, init_tracing, observability_health, observability_metrics,
+    trace_context, track_metrics,
 };
 use axum::{
     Router,
@@ -63,6 +64,7 @@ impl FromRef<AppState> for Arc<WorkspaceHub> {
 /// Build the application router with all routes and middleware.
 pub fn create_app(pool: sqlx::PgPool) -> Router {
     // Initialize observability startup stats
+    init_tracing();
     init_start_time();
     let _ = init_metrics();
 
@@ -143,6 +145,7 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route("/ws/workspaces/:workspace_id", get(ws_upgrade))
         .route_layer(axum::middleware::from_fn(track_metrics))
         .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(trace_context))
         .layer(cors)
         .with_state(state)
 }

@@ -1,4 +1,4 @@
-use kanbrio_api::{config::AppConfig, create_app};
+use kanbrio_api::{config::AppConfig, create_app, handlers::observability::init_tracing};
 use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
@@ -8,7 +8,7 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env()?;
 
     // Initialize tracing
-    tracing_subscriber::fmt::init();
+    init_tracing();
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -20,6 +20,8 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, create_app(pool)).await?;
+
+    opentelemetry::global::shutdown_tracer_provider();
 
     Ok(())
 }
