@@ -129,3 +129,31 @@ async fn test_observability_metrics_collection(pool: sqlx::PgPool) -> anyhow::Re
 
     Ok(())
 }
+
+#[sqlx::test]
+async fn test_trace_context_propagation(pool: sqlx::PgPool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations").run(&pool).await?;
+    let app = create_app(pool);
+
+    let traceparent_input = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"; // pragma: allowlist secret
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(http::Method::GET)
+                .uri("/api/observability/health")
+                .header("traceparent", traceparent_input)
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    let traceparent_output = response
+        .headers()
+        .get("traceparent")
+        .expect("response should contain traceparent header")
+        .to_str()?;
+
+    assert!(traceparent_output.contains("4bf92f3577b34da6a3ce929d0e0e4736")); // pragma: allowlist secret
+
+    Ok(())
+}
