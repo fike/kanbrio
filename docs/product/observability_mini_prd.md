@@ -1,171 +1,156 @@
-# Technical Specification & Mini-PRD: Enterprise-Grade Observability Stack
+# Technical Specification & Mini-PRD: Structured JSON Logging, Promtail, and Grafana Loki Correlation
 
-**Status**: Proposal | **Version**: 1.0 | **Owner**: @product-manager | **Date**: 2026-05-31
-**Strategic Alignment**: Service Reliability (SLO/SLA), Traceability, Incident Resolution Velocity (MTTR reduction), Operational Compliance.
+**Task ID**: `kanbrio-e2l.5`
+**Status**: Approved Specification | **Version**: 1.1 | **Owner**: @product-manager | **Date**: 2026-06-13
+**Strategic Alignment**: Production Reliability, Diagnostics MTTR Reduction, System Traceability, Platform Health Checks.
 
 ---
 
 > [!IMPORTANT]
-> This mini-PRD details the functional requirements, API contracts, acceptance criteria, and quality validation gates for integrating the **Enterprise-Grade Observability Stack & Local Service Infrastructure** into the Kanbrio monorepo. This plan aligns directly with the architectural patterns detailed in `docs/architecture/observability_stack.md`.
+> This mini-PRD details the functional requirements, telemetry definitions, configurations, and acceptance criteria for implementing **Structured JSON Logging, Promtail log ingestion, and Grafana Loki-Jaeger correlation**. This task completes the visual and operational correlation layer of the observability stack in the Kanbrio monorepo.
 
 ---
 
-## 👥 1. Personas & JTBD User Stories
+## 💡 1. Product & Business Value
 
-We design our observability features around three critical operational personas:
+In high-concurrency production environments, diagnosing microservice failures or database performance degradation is notoriously difficult when logs, traces, and system metrics live in silos. Without correlation, an incident responder is forced to manually align timestamps across different servers, containers, and services to trace a single request's failure path.
 
-### 1.1 The Incident Responder ("The Alerted SRE")
-*   **Core Need**: High-fidelity operational awareness. Needs to verify overall database pool health, backend request rates, error spikes, and container statuses in a single unified view.
-*   **Pain Point**: Vague errors, hidden database pool starvation, and silent application crashes that are only detected when clients report downtime.
-*   **JTBD User Story**:
-    *   *US-OBS-1*: When an alert is triggered in production, I want to inspect a centralized Grafana dashboard displaying container health, active SQLx connection counts, HTTP request rates, and error rate percentages, so that I can isolate the malfunctioning layer in under 60 seconds.
+To achieve enterprise-grade reliability and minimize Mean Time to Resolution (MTTR), we require three tightly integrated components:
 
-### 1.2 The Code Debugger ("The Backend Developer")
-*   **Core Need**: Fine-grained trace mapping of distributed transactions. Wants to trace a single client action (e.g., card movement) from the browser, through the Axum API gateway, down to the exact SQLx statement executed on Postgres.
-*   **Pain Point**: Trying to debug complex async timing issues, slow DB transactions, or deadlock conditions by manually writing debug print statements in development.
-*   **JTBD User Story**:
-    *   *US-OBS-2*: When a specific board transaction experiences high latency, I want to search for its unique trace parent in Jaeger and view a visual timeline of all internal function calls and SQL queries, so that I can pin down the exact line of code causing the delay.
-
-### 1.3 The Platform Engineer ("The Systems Architect")
-*   **Core Need**: Predictable container state machines and automated health checks. Needs standard metrics endpoints for Prometheus scraping and highly detailed JSON `/api/observability/health` routes for container orchestration.
-*   **Pain Point**: Containers reporting as "healthy" (HTTP status 200 on an index page) when their underlying database connections are completely dead or saturated.
-*   **JTBD User Story**:
-    *   *US-OBS-3*: When Docker Compose initializes the stack, I want the API service to wait for the Postgres container's health checks, and expose a `/api/observability/health` endpoint verifying active database connectivity, so that we prevent dead containers from receiving traffic.
+1. **Structured JSON stdout Logs**: Traditional plain-text logs are hard to parse programmatically and query efficiently. JSON structured logging ensures that key metadata fields—such as `timestamp`, `level`, `target`, `trace_id`, and `span_id`—are serialized as machine-readable fields, allowing index-free parsing in Loki and instant log filtering.
+2. **Promtail Container Log Auto-Discovery**: Instead of scraping logs from static, hard-coded files on the host filesystem (which is fragile and does not scale), Promtail must query the Docker daemon socket (`/var/run/docker.sock`) using dynamic container discovery. This ensures all running containers are dynamically scraped and dynamically labeled with meta-labels like container name, compose project, and service.
+3. **Grafana Loki-to-Jaeger Correlation**: A developer or SRE investigating a slow database transaction or api response should not have to manually copy and paste trace IDs. By defining a data link on `trace_id` inside Loki logs, Grafana automatically renders an interactive hyperlink. Clicking this hyperlink takes the operator directly to the corresponding Jaeger trace timeline, connecting *what* happened (application log warnings/errors) with *where* it occurred (the trace map).
 
 ---
 
 ## ⚙️ 2. Numbered Functional Requirements (FR)
 
-### 2.1 Health & Metrics API Endpoints (Rust/Axum)
-*   **FR-OBS-10 (Deep Health Endpoint)**:
-    *   The API must expose a public route `GET /api/observability/health`.
-    *   This route must perform an active check on the database (e.g., executing `SELECT 1`).
-    *   It must return the database status, active connection count, current memory usage, and application uptime in a structured JSON body.
-    *   If database connectivity is offline, it must return an HTTP `503 Service Unavailable` status with a detailed error structure.
-*   **FR-OBS-11 (Metrics Endpoint)**:
-    *   The API must expose a route `GET /api/observability/metrics` (or `/metrics`).
-    *   This route must return metrics in the standard Prometheus exposition text format.
-    *   It must expose default HTTP RED metrics (`http_requests_total`, `http_request_duration_seconds`), database pool metrics (`db_pool_connections_active`), and system memory stats.
+### FR-1: Verify Structured JSON Logging in API Production Profile
+*   **Target Location**: `apps/api/src/handlers/observability.rs`
+*   **Behavior**:
+    *   The logging system must automatically switch to structured JSON formatting when the environment variable `KANBRIO_LOG_FORMAT=json` is set, or when the API detects that it is running inside a containerized environment (manifested by the presence of `/.dockerenv`).
+    *   Under these profiles, standard stdout logs must be emitted as valid, single-line JSON records.
+*   **Telemetry Details (JSON Fields)**:
+    *   Every JSON log entry must contain the following fields:
+        ```json
+        {
+          "timestamp": "2026-06-13T20:15:00.000000Z",
+          "level": "INFO",
+          "fields": {
+            "message": "Starting database connection pool"
+          },
+          "target": "kanbrio_api::db",
+          "span": {
+            "name": "http.request"
+          },
+          "spans": [
+            {
+              "name": "http.request",
+              "trace_id": "8e30b11a2d3c4e5f6a7b8c9d0e1f2a3b",
+              "span_id": "0e1f2a3b4e5f6a7b"
+            }
+          ]
+        }
+        ```
+    *   `trace_id` and `span_id` must be dynamically injected into the span context section of the JSON output whenever a log statement is executed inside an active OpenTelemetry tracing context.
 
-### 2.2 Trace Ingestion & Propagation (OpenTelemetry)
-*   **FR-OBS-12 (OTEL Exporter Connection)**:
-    *   The Rust Axum application must initialize the OpenTelemetry tracing provider upon startup under production profiles.
-    *   It must export tracing data using the OpenTelemetry Protocol (OTLP) over gRPC to `http://kanbrio-jaeger:4317` (configured dynamically via `OTEL_EXPORTER_OTLP_ENDPOINT`).
-*   **FR-OBS-13 (Span Hierarchy & Context Correlation)**:
-    *   Every incoming API request must register a unique HTTP span containing semantic attributes (method, URI, status code).
-    *   Every database query executed through SQLx within that request's context must register as a child span of the active HTTP span.
-    *   The unique `trace_id` must be injected into all corresponding application log statements written to stdout.
+### FR-2: Promtail Docker Socket Scraping and Dynamic Labeling
+*   **Target Location**: `docker/promtail-config.yaml`
+*   **Scrape Method**:
+    *   Replace host-based static configs with dynamic Docker socket discovery using `docker_sd_configs`.
+    *   Configure Promtail to connect directly to the Docker socket at `unix:///var/run/docker.sock`.
+*   **Dynamic Relabeling**:
+    *   Implement relabel configurations to extract and expose the following labels for Loki indexing:
+        *   **`container`**: Extracted from `__meta_docker_container_name` using regex `/(.*)` to strip leading slashes.
+        *   **`project`**: Extracted from `__meta_docker_container_label_com_docker_compose_project`.
+        *   **`service`**: Extracted from `__meta_docker_container_label_com_docker_compose_service`.
+*   **Promtail Config Template Reference**:
+    ```yaml
+    scrape_configs:
+      - job_name: docker-containers
+        docker_sd_configs:
+          - host: unix:///var/run/docker.sock
+            refresh_interval: 5s
+        relabel_configs:
+          - source_labels: [__meta_docker_container_name]
+            regex: '/(.*)'
+            target_label: container
+          - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+            target_label: project
+          - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+            target_label: service
+    ```
 
-### 2.3 Docker Compose Multi-Service Infrastructure
-*   **FR-OBS-14 (Isolated Network Architecture)**:
-    *   All containers must reside inside a dedicated bridge network `kanbrio-network`.
-    *   `postgres`, `prometheus`, and `loki` must not bind ports to the host system directly.
-*   **FR-OBS-15 (Service Start Order & Healthchecks)**:
-    *   `kanbrio-postgres` must define a local healthcheck using `pg_isready`.
-    *   `kanbrio-api` must define a startup dependency `depends_on` indicating that `kanbrio-postgres` is `service_healthy`.
-*   **FR-OBS-16 (Resource Quotas & Logging Safety)**:
-    *   SRE CPU and memory allocation limits (max 256MB memory for Prometheus/Loki; max 128MB for Jaeger/Grafana) must be enforced.
-    *   Stdout logs of all containers must be managed via the Docker logging driver, limited to 10MB file sizes and capped at 3 rotated logs per service.
+### FR-3: Grafana Dashboard Provisioning
+*   **Target Provisioning Config**: `docker/grafana/provisioning/dashboards/dashboards.yml`
+    *   Define a dashboard provider that automatically scans and loads dashboards from the container directory `/var/lib/grafana/dashboards` on startup.
+*   **Target Dashboard Definition**: `docker/grafana/dashboards/kanbrio-dashboard.json`
+    *   Provide a complete JSON representation of the "Kanbrio Observability Dashboard".
+*   **Layout Specifications**:
+    *   **Row 1: Container Infrastructure Health (Prometheus Data Source)**
+        *   *CPU Utilization*: Panel displaying CPU usage per container (in percent/cores) over time. Formula: `sum(rate(container_cpu_usage_seconds_total{container=~"kanbrio-.*"}[5m])) by (container) * 100`.
+        *   *Memory Working Set*: Panel displaying memory consumption per container in bytes. Formula: `container_memory_working_set_bytes{container=~"kanbrio-.*"}`.
+    *   **Row 2: HTTP RED Metrics (Prometheus Data Source)**
+        *   *HTTP Requests (RPS)*: Rate counter indicating incoming HTTP throughput. Formula: `sum(rate(http_requests_total[5m])) by (route, method, status)`.
+        *   *HTTP Latency Quantiles (p50, p95, p99)*: Multi-line chart mapping API latency. Formula: `histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))`.
+        *   *HTTP Error Rate*: Percentage of 5xx server responses relative to total requests. Formula: `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100`.
+    *   **Row 3: SQLx Database Pool Status (Prometheus Data Source)**
+        *   *Active/Idle Connections Gauge*: Gauge displaying active vs idle pool sizes to detect resource exhaustion. Formula: `db_pool_connections_active` and `db_pool_connections_idle`.
+    *   **Row 4: Live Container Logs (Loki Data Source)**
+        *   *Loki Live Feed*: Log panel listing log streams matching `{service="api"}` or `{container="kanbrio-api"}`.
 
----
-
-## 🌐 3. REST API Contracts
-
-### 3.1 Route 1: Deep Health Check
-*   **Method**: `GET`
-*   **Path**: `/api/observability/health`
-*   **Success Response (HTTP `200 OK`)**:
-    *   **Body Schema (JSON)**:
-```json
-{
-  "status": "healthy",
-  "uptime_seconds": 12805,
-  "database": {
-    "status": "connected",
-    "active_connections": 3,
-    "idle_connections": 2,
-    "max_connections": 5
-  },
-  "system": {
-    "memory_used_bytes": 15420120,
-    "cpu_usage_percent": 1.2
-  }
-}
-```
-*   **Failure Response (HTTP `503 Service Unavailable`)**:
-    *   **Trigger**: Database offline or connection pool exhausted.
-    *   **Body Schema (JSON)**:
-```json
-{
-  "status": "unhealthy",
-  "error": "Database connection verification failed: pool timed out",
-  "database": {
-    "status": "disconnected"
-  }
-}
-```
-
-### 3.2 Route 2: Prometheus Metrics Scraping
-*   **Method**: `GET`
-*   **Path**: `/api/observability/metrics`
-*   **Success Response (HTTP `200 OK`)**:
-    *   **Content-Type**: `text/plain; version=0.0.4; charset=utf-8`
-    *   **Sample Body Payload**:
-```text
-# HELP http_requests_total Total number of HTTP requests processed
-# TYPE http_requests_total counter
-http_requests_total{method="POST",route="/api/workspaces/:workspace_id/cards",status="201"} 14
-http_requests_total{method="GET",route="/api/observability/health",status="200"} 256
-
-# HELP http_request_duration_seconds HTTP request execution latency in seconds
-# TYPE http_request_duration_seconds histogram
-http_request_duration_seconds_bucket{method="POST",route="/api/workspaces/:workspace_id/cards",le="0.005"} 12
-http_request_duration_seconds_bucket{method="POST",route="/api/workspaces/:workspace_id/cards",le="0.01"} 14
-http_request_duration_seconds_count{method="POST",route="/api/workspaces/:workspace_id/cards"} 14
-
-# HELP db_pool_connections_active Active database connection pool count
-# TYPE db_pool_connections_active gauge
-db_pool_connections_active 3
-```
-
----
-
-## 🧪 4. TDD & Quality Validation Strategy
-
-### 4.1 Rust Integration Tests (`apps/api/tests/observability_api_tests.rs`)
-To ensure high reliability of our health metrics, we enforce TDD integration tests:
-1.  **Test Case 1: Healthy Endpoint Status**:
-    *   Initialize a mock SQLx connection pool.
-    *   Invoke the `GET /api/observability/health` handler directly.
-    *   Assert that the HTTP status is `200 OK` and the returned payload matches the success schema.
-2.  **Test Case 2: Unhealthy Endpoint Status**:
-    *   Initialize a disconnected or closed database pool wrapper.
-    *   Invoke the `/api/observability/health` handler.
-    *   Assert that the HTTP status returns `503 Service Unavailable` and the JSON `status` matches `"unhealthy"`.
-3.  **Test Case 3: Metrics Collection**:
-    *   Perform a mock POST request to create a workspace to increment HTTP counters.
-    *   Invoke `GET /api/observability/metrics`.
-    *   Assert that the response contains `http_requests_total` with matching label keys.
-
-### 4.2 Playwright E2E Verification (`apps/e2e/tests/observability.spec.ts`)
-1.  **Test Case E2E-1 (Infrastructure Health Verification)**:
-    *   The E2E suite triggers a query request to `/api/observability/health` on the local running instance.
-    *   Asserts JSON status is `"healthy"`.
-2.  **Test Case E2E-2 (Trace ID Propagation Verification)**:
-    *   Trigger a card creation request from the Playwright browser context.
-    *   Verify that the response headers contain the `traceparent` propagation tag.
-    *   Query Jaeger API for that `trace_id` and assert that the HTTP span and its nested child SQLx spans exist in the trace database.
+### FR-4: Log-to-Trace Correlation (Derived Fields)
+*   **Target Location**: `docker/grafana/provisioning/datasources/datasources.yml`
+*   **Correlation Link Mechanism**:
+    *   In the Loki datasource declaration under `jsonData`, specify `derivedFields` mapping.
+    *   Configure `trace_id` derived field using a regex matcher targeting the JSON key-value log string.
+    *   Associate the derived field with the Jaeger datasource, specifying the target Jaeger datasource UID.
+*   **Configuration Schema Reference**:
+    ```yaml
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        editable: true
+        jsonData:
+          maxLines: 100
+          derivedFields:
+            - name: trace_id
+              matcherRegex: '"trace_id":"([^"]+)"'
+              url: '$${__value.raw}'
+              datasourceUid: jaeger
+              urlDisplayLabel: 'View Trace in Jaeger'
+    ```
+    *(Note: The double dollar sign `$$` prevents environment expansion by docker-compose or YAML loaders)*.
 
 ---
 
-## 📊 5. RICE Prioritization & MoSCoW Mapping
+## 🧪 3. Numbered Acceptance Criteria (AC)
 
-| Metric / Feature Component | Reach (1-10) | Impact (0.5-3) | Confidence (50%-100%) | Effort (Person-Weeks) | RICE Score | MoSCoW |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Docker Compose Isolated Networks & Healthchecks** | 10 (Platform) | 2.0 (High safety) | 95% (Compose specs) | 0.3 | **633** | **Must Have** |
-| **Rust Axum /health & /metrics API Endpoints** | 10 (SRE) | 2.0 (Incidents) | 90% (Standard Axum) | 0.4 | **450** | **Must Have** |
-| **OpenTelemetry Span Propagation & Jaeger Tracing** | 8 (Developers) | 2.5 (High debugging)| 85% (OTel Crates) | 0.6 | **283** | **Must Have** |
-| **Structured JSON Logging & Grafana Loki correlation**| 8 (Auditors) | 1.5 (Trace join) | 80% (Fmt filters) | 0.5 | **192** | **Should Have** |
-| **Pre-Configured Grafana Incident Dashboard** | 6 (Operations)| 1.5 (Rapid triage)| 80% (Config-JSON) | 0.5 | **144** | **Should Have** |
+### AC-1: Valid JSON Output and Trace ID Propagation
+*   **Scenario**: Run the application in a Docker container or execute it with `KANBRIO_LOG_FORMAT=json`.
+*   **Assertion**:
+    1.  All console logs emitted during an API request context must be valid JSON objects.
+    2.  If the log is triggered within an HTTP endpoint, the JSON body must include the `trace_id` and `span_id` within the `spans` array or inside the root log object fields.
+    3.  Executing `RUST_LOG=info cargo run` with `KANBRIO_LOG_FORMAT=json` must print compliant JSON log lines to standard output.
 
-**Verdict**: The Docker Compose multi-service topology, the Deep Health Check API, and the OpenTelemetry Jaeger trace integration are classified as **Must Haves** for the upcoming implementation cycle. Log correlation to Loki and the Grafana dashboard provisioning will be completed as **Should Haves** in the same milestone.
+### AC-2: Promtail Docker Discovery & Labeling Validation
+*   **Scenario**: Spin up the Docker Compose stack using `docker compose up -d`.
+*   **Assertion**:
+    1.  Promtail container logs verify that the Docker daemon socket connects successfully.
+    2.  Querying Loki via the Grafana interface (Explore) shows metadata labels `container`, `project`, and `service` automatically appended to log lines.
+    3.  Filters such as `{service="api"}` successfully retrieve log streams generated by the `kanbrio-api` container.
+
+### AC-3: Automated Grafana Dashboard Provisioning
+*   **Scenario**: Initial boot of the Grafana container.
+*   **Assertion**:
+    1.  Grafana parses `dashboards.yml` and pre-loads the `kanbrio-dashboard.json` definition.
+    2.  An operator logging in to Grafana (`http://localhost:3001`) can view the pre-provisioned "Kanbrio Observability Dashboard" under the general dashboard directory.
+    3.  All panels (System Health, RED metrics, SQLx connections, and Loki logs) load and display real-time data without manual configuration.
+
+### AC-4: Interactive Log-to-Trace Linkage
+*   **Scenario**: Inspecting API logs in the Loki query section of Grafana.
+*   **Assertion**:
+    1.  Every log entry that contains a valid JSON `"trace_id"` must render the trace ID value as a clickable link.
+    2.  Hovering over the field exposes the action label `'View Trace in Jaeger'`.
+    3.  Clicking the link opens a split pane or redirects the user directly to the Jaeger tracing viewer, displaying the exact span hierarchy of that transaction.

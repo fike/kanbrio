@@ -9,6 +9,7 @@ use axum::{
 use metrics::{counter, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use opentelemetry::global;
+use opentelemetry::trace::TraceContextExt;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::trace::{self, Sampler};
 use serde::Serialize;
@@ -20,6 +21,144 @@ use sysinfo::{System, get_current_pid};
 use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::prelude::*;
+
+use std::fmt;
+use tracing::Subscriber;
+use tracing_subscriber::fmt::{FmtContext, FormatFields, format::FormatEvent};
+use tracing_subscriber::registry::LookupSpan;
+
+struct JsonVisitor<'a> {
+    fields: &'a mut serde_json::Map<String, serde_json::Value>,
+}
+
+impl<'a> tracing::field::Visit for JsonVisitor<'a> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.fields.insert(
+            field.name().to_string(),
+            serde_json::Value::String(format!("{:?}", value)),
+        );
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.fields.insert(
+            field.name().to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+    }
+
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.fields.insert(
+            field.name().to_string(),
+            serde_json::Value::Number(value.into()),
+        );
+    }
+
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.fields.insert(
+            field.name().to_string(),
+            serde_json::Value::Number(value.into()),
+        );
+    }
+
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.fields
+            .insert(field.name().to_string(), serde_json::Value::Bool(value));
+    }
+}
+
+pub struct CustomJsonFormatter;
+
+impl<S, N> FormatEvent<S, N> for CustomJsonFormatter
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        _ctx: &FmtContext<'_, S, N>,
+        mut writer: tracing_subscriber::fmt::format::Writer<'_>,
+        event: &tracing::Event<'_>,
+    ) -> fmt::Result {
+        let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+        let level = event.metadata().level().to_string();
+        let target = event.metadata().target().to_string();
+
+        let mut fields = serde_json::Map::new();
+        let mut visitor = JsonVisitor {
+            fields: &mut fields,
+        };
+        event.record(&mut visitor);
+
+        let mut log_record = serde_json::Map::new();
+        log_record.insert(
+            "timestamp".to_string(),
+            serde_json::Value::String(timestamp),
+        );
+        log_record.insert("level".to_string(), serde_json::Value::String(level));
+        log_record.insert("target".to_string(), serde_json::Value::String(target));
+        log_record.insert("fields".to_string(), serde_json::Value::Object(fields));
+
+        let mut trace_id = None;
+        let mut span_id = None;
+        let mut span_name = "unknown";
+        if let Some(span_ref) = _ctx.lookup_current() {
+            span_name = span_ref.metadata().name();
+            let extensions = span_ref.extensions();
+            if let Some(otel_data) = extensions.get::<tracing_opentelemetry::OtelData>() {
+                let span = otel_data.parent_cx.span();
+                let parent_sc = span.span_context();
+                if parent_sc.is_valid() {
+                    trace_id = Some(parent_sc.trace_id());
+                    span_id = otel_data
+                        .builder
+                        .span_id
+                        .or_else(|| Some(parent_sc.span_id()));
+                } else {
+                    trace_id = otel_data.builder.trace_id;
+                    span_id = otel_data.builder.span_id;
+                }
+            }
+        }
+
+        if let (Some(tid), Some(sid)) = (trace_id, span_id) {
+            let trace_id_str = tid.to_string();
+            let span_id_str = sid.to_string();
+
+            let mut span_obj = serde_json::Map::new();
+            span_obj.insert(
+                "trace_id".to_string(),
+                serde_json::Value::String(trace_id_str.clone()),
+            );
+            span_obj.insert(
+                "span_id".to_string(),
+                serde_json::Value::String(span_id_str.clone()),
+            );
+            log_record.insert("span".to_string(), serde_json::Value::Object(span_obj));
+
+            let mut spans_array = Vec::new();
+            let mut span_info = serde_json::Map::new();
+            span_info.insert(
+                "name".to_string(),
+                serde_json::Value::String(span_name.to_string()),
+            );
+            span_info.insert(
+                "trace_id".to_string(),
+                serde_json::Value::String(trace_id_str),
+            );
+            span_info.insert(
+                "span_id".to_string(),
+                serde_json::Value::String(span_id_str),
+            );
+            spans_array.push(serde_json::Value::Object(span_info));
+            log_record.insert("spans".to_string(), serde_json::Value::Array(spans_array));
+        }
+
+        let serialized = serde_json::to_string(&log_record).map_err(|_| fmt::Error)?;
+        writeln!(writer, "{}", serialized)?;
+
+        Ok(())
+    }
+}
 
 static TRACING_INIT: std::sync::Once = std::sync::Once::new();
 
@@ -66,7 +205,8 @@ pub fn init_tracing() {
             Ok(tracer) => {
                 if use_json {
                     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-                    let fmt_layer = tracing_subscriber::fmt::layer().json();
+                    let fmt_layer = tracing_subscriber::fmt::layer()
+                        .event_format(CustomJsonFormatter);
                     let _ = registry.with(fmt_layer).with(otel_layer).try_init();
                 } else {
                     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
@@ -80,7 +220,8 @@ pub fn init_tracing() {
                     err
                 );
                 if use_json {
-                    let fmt_layer = tracing_subscriber::fmt::layer().json();
+                    let fmt_layer = tracing_subscriber::fmt::layer()
+                        .event_format(CustomJsonFormatter);
                     let _ = registry.with(fmt_layer).try_init();
                 } else {
                     let fmt_layer = tracing_subscriber::fmt::layer();
@@ -286,6 +427,9 @@ pub async fn observability_metrics(State(pool): State<PgPool>) -> impl IntoRespo
     // Set cached system metrics
     let memory_used_bytes = MEMORY_USED_BYTES.load(Ordering::Relaxed);
     gauge!("system_memory_used_bytes").set(memory_used_bytes as f64);
+
+    let cpu_usage_percent = f32::from_bits(CPU_USAGE_PERCENT.load(Ordering::Relaxed));
+    gauge!("system_cpu_usage_percent").set(cpu_usage_percent as f64);
 
     (
         [("content-type", "text/plain; version=0.0.4; charset=utf-8")],

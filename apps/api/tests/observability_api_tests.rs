@@ -126,6 +126,7 @@ async fn test_observability_metrics_collection(pool: sqlx::PgPool) -> anyhow::Re
     assert!(body_str.contains("db_pool_connections_active"));
     assert!(body_str.contains("db_pool_connections_idle"));
     assert!(body_str.contains("system_memory_used_bytes"));
+    assert!(body_str.contains("system_cpu_usage_percent"));
 
     Ok(())
 }
@@ -154,6 +155,112 @@ async fn test_trace_context_propagation(pool: sqlx::PgPool) -> anyhow::Result<()
         .to_str()?;
 
     assert!(traceparent_output.contains("4bf92f3577b34da6a3ce929d0e0e4736")); // pragma: allowlist secret
+
+    Ok(())
+}
+
+use std::io;
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
+struct TestWriter {
+    buffer: Arc<Mutex<Vec<u8>>>,
+}
+
+impl io::Write for TestWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buffer.lock().unwrap().write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.buffer.lock().unwrap().flush()
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for TestWriter {
+    type Writer = TestWriter;
+
+    fn make_writer(&self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+#[test]
+fn test_custom_json_logging_with_otel_context() -> anyhow::Result<()> {
+    use kanbrio_api::handlers::observability::CustomJsonFormatter;
+    use opentelemetry::trace::TracerProvider;
+    use opentelemetry::trace::{
+        SpanContext, SpanId, TraceContextExt, TraceFlags, TraceId, TraceState,
+    };
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let writer = TestWriter {
+        buffer: buffer.clone(),
+    };
+
+    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
+        .with_config(
+            opentelemetry_sdk::trace::config()
+                .with_sampler(opentelemetry_sdk::trace::Sampler::AlwaysOn),
+        )
+        .build();
+    let tracer = provider.tracer("test");
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let subscriber = tracing_subscriber::registry().with(otel_layer).with(
+        tracing_subscriber::fmt::layer()
+            .event_format(CustomJsonFormatter)
+            .with_writer(writer),
+    );
+
+    tracing::subscriber::with_default(subscriber, || {
+        let trace_id = TraceId::from_hex("8e30b11a2d3c4e5f6a7b8c9d0e1f2a3b").unwrap(); // pragma: allowlist secret
+        let span_id = SpanId::from_hex("0e1f2a3b4e5f6a7b").unwrap(); // pragma: allowlist secret
+        let span_context = SpanContext::new(
+            trace_id,
+            span_id,
+            TraceFlags::SAMPLED,
+            false,
+            TraceState::default(),
+        );
+
+        let context = opentelemetry::Context::new().with_remote_span_context(span_context);
+        let span = tracing::info_span!("http.request");
+        println!(
+            "TEST SPAN - is_disabled: {}, id: {:?}",
+            span.is_disabled(),
+            span.id()
+        );
+        span.set_parent(context);
+
+        let _entered = span.enter();
+        let current_span_in_test = tracing::Span::current();
+        println!(
+            "IN TEST - current span name: {:?}",
+            current_span_in_test.metadata().map(|m| m.name())
+        );
+        tracing::info!("Test message for JSON logging");
+    });
+
+    let output = String::from_utf8(buffer.lock().unwrap().clone())?;
+    println!("LOG OUTPUT: {}", output);
+    assert!(!output.is_empty(), "Log output should not be empty");
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&output).expect("Log output must be valid JSON");
+
+    assert!(
+        parsed["timestamp"].is_string(),
+        "Missing or invalid timestamp"
+    );
+    assert_eq!(parsed["level"], "INFO");
+    assert_eq!(parsed["fields"]["message"], "Test message for JSON logging");
+    assert_eq!(
+        parsed["span"]["trace_id"],
+        "8e30b11a2d3c4e5f6a7b8c9d0e1f2a3b" // pragma: allowlist secret
+    );
+    assert!(parsed["span"]["span_id"].is_string(), "Missing span_id");
 
     Ok(())
 }
