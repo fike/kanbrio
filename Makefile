@@ -19,7 +19,7 @@ setup:
 	$(COMPOSE) up -d --build postgres
 	@echo "Waiting for PostgreSQL to be ready..."
 	@sleep 5
-	@cargo test --package kanbrio-api -- --test-threads=1 || true
+	@cd apps/api && cargo test -- --test-threads=1 || true
 	@echo "Setup complete."
 
 # ── Legacy Docker targets (deprecated — use compose-* instead) ───────
@@ -54,22 +54,22 @@ compose-observability:
 # ── Testing ──────────────────────────────────────────────────────────
 
 test:
-	cargo test --workspace
+	cd apps/api && cargo test
 
 test-api:
-	cargo test --package kanbrio-api
+	cd apps/api && cargo test
 
 test-workspace:
-	cargo test --workspace
+	cd apps/api && cargo test
 
 # ── Build ────────────────────────────────────────────────────────────
 
 build:
-	cargo build --workspace --release
+	cd apps/api && cargo build --release
 
 # ── Clean ────────────────────────────────────────────────────────────
 
 clean:
-	cargo clean --workspace
+	cd apps/api && cargo clean
 	rm -rf apps/web/node_modules
 	rm -rf apps/web/dist
