@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE cards\n            SET assigned_user_id = $1, updated_at = NOW()\n            WHERE id = $2 AND workspace_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "52e16d5447c0936efe94c20f2e5e771bd7f06dd28d5ec574e20e8c7ae8238bd2"
+}
