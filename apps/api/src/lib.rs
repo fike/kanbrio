@@ -23,6 +23,7 @@ use crate::handlers::observability::{
     init_metrics, init_start_time, init_tracing, observability_health, observability_metrics,
     trace_context, track_metrics,
 };
+use crate::handlers::rules::{create_rule, delete_rule, list_rules, update_rule};
 use axum::{
     Router,
     extract::FromRef,
@@ -140,6 +141,15 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/checklists/:checklist_id",
             axum::routing::delete(delete_checklist_item),
+        )
+        // Business Rules CRUD (AC-5)
+        .route(
+            "/api/workspaces/:workspace_id/rules",
+            get(list_rules).post(create_rule),
+        )
+        .route(
+            "/api/workspaces/:workspace_id/rules/:rule_id",
+            axum::routing::patch(update_rule).delete(delete_rule),
         )
         // WebSocket endpoint
         .route("/ws/workspaces/:workspace_id", get(ws_upgrade))

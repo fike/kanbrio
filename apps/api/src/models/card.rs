@@ -382,7 +382,36 @@ impl Card {
         .fetch_one(&mut *tx)
         .await?;
 
-        // 5. Log transition (Issue #3)
+        let column_changed = current_card.current_column_id != updated_card.current_column_id;
+
+        // 5. Evaluate business rules (AC-2, AC-3, AC-4)
+        if column_changed {
+            let trigger_ctx = crate::models::rule::TriggerContext {
+                card_id: updated_card.id,
+                workspace_id: data.workspace_id,
+                from_column_id: Some(current_card.current_column_id),
+                to_column_id: updated_card.current_column_id,
+                parent_id: current_card.parent_id,
+            };
+            crate::models::rule::RuleEngine::evaluate(
+                &mut tx,
+                data.workspace_id,
+                "child_status_changed",
+                &trigger_ctx,
+                0,
+            )
+            .await?;
+            crate::models::rule::RuleEngine::evaluate(
+                &mut tx,
+                data.workspace_id,
+                "card_entered_column",
+                &trigger_ctx,
+                0,
+            )
+            .await?;
+        }
+
+        // 6. Log transition (Issue #3)
         let transition_type = if is_override {
             "move_override".to_string()
         } else {
