@@ -16,6 +16,7 @@ pub struct CardTransition {
     pub from_swimlane_id: Option<Uuid>,
     pub to_swimlane_id: Option<Uuid>,
     pub payload: Option<serde_json::Value>,
+    pub triggering_rule_id: Option<Uuid>,
 }
 
 impl CardTransition {

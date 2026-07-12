@@ -1372,4 +1372,415 @@ The developer MUST implement these data-testid anchors for end-to-end testabilit
    - Disconnect banner → Placed below header in `App.tsx` (conditional rendering)
 
 5. **Performance:** All remote flash animations use CSS transitions/keyframes (no JavaScript animation loops). The `recentlyMutatedCardIds` set is cleaned up via `setTimeout` to prevent memory leaks on boards with 500+ cards.
+
+---
+
+## 15. Component Styling Guidelines: Workspace Business Rules Settings
+
+This section details the layout structures, Tailwind utility classes, interactive states (loading, validation error, empty, success), and accessibility constraints for the Workspace Business Rules settings interface (located at `/workspaces/:workspace_id/settings/rules`).
+
+### 15.1 Route & Layout Structure
+Access to this settings view is restricted to Workspace Admins. The screen is nested inside the general Workspace Settings layout, using a sidebar navigation link.
+- **Main View Container:** `w-full max-w-4xl mx-auto p-6 flex flex-col gap-6`
+- **Header Section:** `flex items-center justify-between pb-4 border-b border-base`
+- **Header Metadata Layout:** `flex flex-col gap-1`
+  - **Title:** `text-lg font-semibold tracking-tight text-primary`
+  - **Description:** `text-xs text-secondary leading-normal`
+- **Header Actions Layout:** `flex items-center gap-3`
+  - **Create Rule Button:** `px-3 py-1.5 bg-accent-primary hover:bg-accent-primary/95 active:scale-[0.98] text-white text-xs font-semibold rounded-md shadow-sm focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all flex items-center gap-1.5`
+
+#### Tailwind HTML Markup Structure (Header)
+```html
+<div class="flex items-center justify-between pb-4 border-b border-base" data-testid="rules-settings-header">
+  <div class="flex flex-col gap-1">
+    <h2 class="text-lg font-semibold tracking-tight text-primary">Business Rules</h2>
+    <p class="text-xs text-secondary">Configure triggers and actions to automate cards transitions and assignees within this workspace.</p>
+  </div>
+  <button
+    type="button"
+    class="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary/95 active:scale-[0.98] text-white text-xs font-semibold rounded-md shadow-sm focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all flex items-center gap-1.5"
+    data-testid="add-rule-button"
+    aria-haspopup="dialog"
+  >
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+    </svg>
+    <span>Create Rule</span>
+  </button>
+</div>
 ```
+
+---
+
+### 15.2 Rules List & Dense Card UI
+All workspace rules are rendered inside a dense, scannable list layout. Each rule displays its name, automatic logic, active status, and inline actions.
+- **List Container:** `flex flex-col gap-3`
+- **Rule Row Card:** `w-full p-4 bg-surface border border-base rounded-lg shadow-sm flex items-center justify-between hover:border-secondary/30 transition-all duration-150`
+- **Status Badges:**
+  - **Active:** `bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase`
+  - **Inactive:** `bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase`
+- **Toggle Switch:** An accessible binary switch component.
+  - **Switch Track:** `relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2`
+    - **Active/Checked Track:** `bg-accent-primary`
+    - **Inactive/Unchecked Track:** `bg-elevated`
+  - **Switch Thumb (Knob):** `pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`
+    - **Active/Checked Thumb:** `translate-x-4`
+    - **Inactive/Unchecked Thumb:** `translate-x-0`
+- **Delete Button:** `p-1.5 text-secondary hover:text-status-blocked rounded hover:bg-elevated focus:ring-2 focus:ring-status-blocked/40 focus:outline-none transition-all cursor-pointer`
+
+#### Tailwind HTML Markup Structure (Rule Card)
+```html
+<div
+  class="w-full p-4 bg-surface border border-base rounded-lg shadow-sm flex items-center justify-between hover:border-secondary/30 transition-all duration-150"
+  data-testid="rule-row-rule_123"
+>
+  <!-- Left Side: Content -->
+  <div class="flex flex-col gap-1 min-w-0">
+    <div class="flex items-center gap-2.5">
+      <span class="text-sm font-semibold text-primary truncate">Auto-Move Parent to Done</span>
+      <span class="bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase" data-testid="rule-status-badge">Active</span>
+    </div>
+    <p class="text-xs text-secondary leading-normal">
+      When all child cards are completed, automatically move the parent card to the "Done" column.
+    </p>
+  </div>
+
+  <!-- Right Side: Interactive Controls -->
+  <div class="flex items-center gap-4 flex-shrink-0">
+    <!-- Accessible Switch Component -->
+    <button
+      type="button"
+      role="switch"
+      aria-checked="true"
+      data-testid="rule-toggle-rule_123"
+      class="bg-accent-primary relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2"
+      aria-label="Toggle Auto-Move Parent to Done rule"
+    >
+      <span class="translate-x-4 pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+    </button>
+
+    <!-- Delete Button -->
+    <button
+      type="button"
+      class="p-1.5 text-secondary hover:text-status-blocked rounded hover:bg-elevated focus:ring-2 focus:ring-status-blocked/40 focus:outline-none transition-all"
+      data-testid="rule-delete-rule_123"
+      aria-label="Delete rule Auto-Move Parent to Done"
+    >
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+    </button>
+  </div>
+</div>
+```
+
+---
+
+### 15.3 Skeletons / Shimmer Loading State
+When fetching workspace rules initially or during refresh cycles, the view displays skeleton placeholders mapping the list structure to prevent layout jumps.
+- **Skeleton Wrapper:** `flex flex-col gap-3`
+- **Skeleton Card:** `w-full p-4 bg-surface border border-base rounded-lg shadow-sm flex items-center justify-between animate-pulse`
+- **Skeleton Text Placeholders:** Uses `bg-elevated` panels with defined heights to mimic text rows.
+
+#### Tailwind HTML Markup Structure (Loading Skeleton)
+```html
+<div class="flex flex-col gap-3" data-testid="rules-loading-skeleton" aria-busy="true" aria-label="Loading automated rules">
+  <!-- Repeatable Row Skeleton -->
+  <div class="w-full p-4 bg-surface border border-base rounded-lg shadow-sm flex items-center justify-between animate-pulse">
+    <div class="flex flex-col gap-2 flex-1">
+      <div class="flex items-center gap-3">
+        <div class="h-4 bg-elevated rounded w-1/4"></div>
+        <div class="h-4 bg-elevated rounded w-12"></div>
+      </div>
+      <div class="h-3 bg-elevated rounded w-1/2"></div>
+    </div>
+    <div class="flex items-center gap-4 flex-shrink-0">
+      <div class="w-9 h-5 bg-elevated rounded-full"></div>
+      <div class="w-7 h-7 bg-elevated rounded"></div>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+### 15.4 Actionable Empty State
+If a workspace has no automation rules configured, an actionable empty state screen provides onboarding direction and a prominent path to configure the first rule.
+- **Empty State Container:** `w-full min-h-[320px] border border-dashed border-base rounded-lg flex flex-col items-center justify-center p-8 bg-surface/50`
+- **Illustration Circle:** `w-12 h-12 rounded-full bg-accent-primary/10 text-accent-primary flex items-center justify-center mb-4`
+- **Primary Text:** `text-sm font-semibold text-primary mt-2`
+- **Description:** `text-xs text-secondary text-center max-w-sm mt-1 mb-5 leading-relaxed`
+
+#### Tailwind HTML Markup Structure (Empty State)
+```html
+<div class="w-full min-h-[320px] border border-dashed border-base rounded-lg flex flex-col items-center justify-center p-8 bg-surface/50" data-testid="rules-empty-state">
+  <div class="w-12 h-12 rounded-full bg-accent-primary/10 text-accent-primary flex items-center justify-center mb-2" aria-hidden="true">
+    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+    </svg>
+  </div>
+  <h3 class="text-sm font-semibold text-primary mt-2">No Automation Rules Configured</h3>
+  <p class="text-xs text-secondary text-center max-w-sm mt-1 mb-5 leading-relaxed">
+    Create triggers and actions to sync subtask statuses automatically or auto-assign tasks during column transitions.
+  </p>
+  <button
+    type="button"
+    class="px-4 py-2 bg-accent-primary hover:bg-accent-primary/95 text-white text-xs font-semibold rounded-md shadow-sm focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all flex items-center gap-1.5"
+    data-testid="add-rule-button-empty"
+    aria-haspopup="dialog"
+  >
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+    </svg>
+    <span>Configure First Rule</span>
+  </button>
+</div>
+```
+
+---
+
+### 15.5 Create Rule Modal Form
+The creation modal uses a structured form to guide the workspace administrator through setting up the automation.
+- **Overlay Backdrop:** `fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300 ease-standard animate-backdrop-fade-in`
+- **Modal Dialog Box:** `w-full max-w-[500px] bg-surface dark:bg-slate-900 border border-base dark:border-slate-800 rounded-lg shadow-xl p-5 relative z-50 flex flex-col gap-4 animate-modal-pop`
+- **Form Formats:** Standard input text fields, select lists, and conditional logic rendering.
+- **Conditional Target Zones:** When trigger or action selections require specific bounds (e.g. mapping `column_id` or `user_id`), the form injects secondary inputs using the standard slide-in fade animation (`animate-dropdown-enter`).
+
+#### Tailwind HTML Markup Structure (Modal Dialog)
+```html
+<!-- Backdrop Overlay -->
+<div class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-backdrop-fade-in" role="none">
+  <!-- Modal Dialog -->
+  <div
+    class="w-full max-w-[500px] bg-surface dark:bg-slate-900 border border-base dark:border-slate-800 rounded-lg shadow-xl p-5 relative z-50 flex flex-col gap-4 animate-modal-pop"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="rule-modal-title"
+    aria-describedby="rule-modal-description"
+    data-testid="create-rule-modal"
+  >
+    <!-- Close Button -->
+    <button
+      type="button"
+      class="absolute top-4 right-4 p-1.5 text-secondary hover:text-primary rounded-md hover:bg-elevated focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all"
+      aria-label="Close modal"
+      data-testid="rule-modal-close"
+    >
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+    </button>
+
+    <!-- Header -->
+    <div class="flex flex-col gap-1">
+      <h2 id="rule-modal-title" class="text-base font-semibold text-primary">Create Business Rule</h2>
+      <p id="rule-modal-description" class="text-xs text-secondary">Configure automated workflow transitions and metadata updates.</p>
+    </div>
+
+    <!-- Form -->
+    <form class="flex flex-col gap-4" data-testid="create-rule-form" aria-label="Create new business rule">
+      <!-- Input: Rule Name -->
+      <div class="flex flex-col gap-1.5">
+        <label for="rule-name" class="text-[10px] font-bold text-secondary uppercase tracking-wider select-none">Rule Name</label>
+        <input
+          type="text"
+          id="rule-name"
+          data-testid="rule-name-input"
+          class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all placeholder:text-tertiary text-primary"
+          placeholder="e.g. Auto-assign to QA team"
+          required
+          aria-required="true"
+        />
+      </div>
+
+      <!-- Select: Trigger Type -->
+      <div class="flex flex-col gap-1.5">
+        <label for="rule-trigger" class="text-[10px] font-bold text-secondary uppercase tracking-wider select-none">Trigger Event</label>
+        <select
+          id="rule-trigger"
+          data-testid="rule-trigger-select"
+          class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all text-primary"
+          required
+          aria-required="true"
+        >
+          <option value="">Select a trigger event...</option>
+          <option value="child_status_changed">All child tasks are completed</option>
+          <option value="card_entered_column">Card entered a specific column</option>
+        </select>
+      </div>
+
+      <!-- Conditional Trigger Input: Column Selection -->
+      <!-- Rendered dynamically when Trigger = 'card_entered_column' -->
+      <div class="flex flex-col gap-1.5 animate-dropdown-enter" data-testid="rule-config-column-section">
+        <label for="rule-column" class="text-[10px] font-bold text-secondary uppercase tracking-wider select-none">Target Column</label>
+        <select
+          id="rule-column"
+          data-testid="rule-column-select"
+          class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all text-primary"
+          required
+          aria-required="true"
+        >
+          <option value="">Select target column...</option>
+          <option value="col_1">In Progress</option>
+          <option value="col_2">Code Review</option>
+          <option value="col_3">QA Testing</option>
+        </select>
+      </div>
+
+      <!-- Select: Action Type -->
+      <div class="flex flex-col gap-1.5">
+        <label for="rule-action" class="text-[10px] font-bold text-secondary uppercase tracking-wider select-none">Action Result</label>
+        <select
+          id="rule-action"
+          data-testid="rule-action-select"
+          class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all text-primary"
+          required
+          aria-required="true"
+        >
+          <option value="">Select an action event...</option>
+          <option value="move_parent_card">Sync status & move parent card to Done</option>
+          <option value="assign_card">Assign card to member</option>
+        </select>
+      </div>
+
+      <!-- Conditional Action Input: Assignee Selection -->
+      <!-- Rendered dynamically when Action = 'assign_card' -->
+      <div class="flex flex-col gap-1.5 animate-dropdown-enter" data-testid="rule-config-assignee-section">
+        <label for="rule-assignee" class="text-[10px] font-bold text-secondary uppercase tracking-wider select-none">Assign To</label>
+        <select
+          id="rule-assignee"
+          data-testid="rule-assignee-select"
+          class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all text-primary"
+          required
+          aria-required="true"
+        >
+          <option value="">Select assignee...</option>
+          <option value="clear">Unassigned / Clear Assignee</option>
+          <option value="user_1">@flow-guardian (Scrum Master)</option>
+          <option value="user_2">@focus-executor (Developer)</option>
+        </select>
+      </div>
+
+      <!-- Form Footer Actions -->
+      <div class="flex items-center justify-end gap-3 mt-2">
+        <button
+          type="button"
+          class="px-4 py-2 border border-base rounded-md text-sm font-medium text-secondary bg-surface hover:bg-elevated focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all"
+          data-testid="rule-modal-cancel"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          class="px-4 py-2 bg-accent-primary hover:bg-accent-primary/95 text-white rounded-md text-sm font-medium focus:ring-2 focus:ring-accent-primary focus:outline-none transition-all flex items-center justify-center gap-2"
+          data-testid="rule-modal-submit"
+        >
+          Create Rule
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+```
+
+---
+
+### 15.6 Modal Focus Trap & Keyboard Navigation (a11y)
+The developer MUST strictly implement key accessibility constraints for rule creation modals:
+1. **Focus Trap:** When the modal is active, focus navigation (using `Tab` and `Shift + Tab`) is trapped within the boundary of the modal dialog card. It must wrap from the last element (Submit) back to the first element (Close button or Name input).
+2. **Immediate Focus (Autofocus):** Upon render, focus must automatically mount onto the Rule Name input field.
+3. **Escape Dismissal:** Pressing `Escape` at any point while focus is inside the dialog must instantly close the modal and return focus back to the page's trigger action ("Create Rule" button).
+4. **Enter Submission:** Keyboard users must be able to submit the form by pressing `Enter` on any text input or select field once basic validations are satisfied.
+5. **Backdrop Close:** Clicking the Backdrop Overlay (outside the modal box) will dismiss the modal.
+
+---
+
+### 15.7 Form Validation Error States
+When form validation fails or the backend rejects the ruleset payload, the interface provides responsive visual and haptic-style cues:
+- **Horizontal Shake:** The modal box executes a 300ms horizontal shake animation (`animate-shake`) to draw immediate user attention.
+- **Invalid Form Fields:** Invalid inputs get a red border: `border-status-blocked bg-status-blocked/5 focus:ring-status-blocked/20 text-status-blocked`.
+- **Field Help Text:** A descriptive validation error message renders directly below the field: `text-xs text-status-blocked font-medium mt-0.5`.
+- **Form-Level Error Banner:** If the backend rejects the request, a banner is mounted at the top of the form containing detailed error text.
+  - **Banner Styling:** `bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex gap-2 items-start`
+  - **Test Anchor:** `data-testid="rule-modal-error"`
+
+#### Tailwind HTML Markup Structure (Form-Level Error Banner)
+```html
+<div
+  class="bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex gap-2 items-start animate-shake"
+  data-testid="rule-modal-error"
+  role="alert"
+  aria-live="assertive"
+>
+  <svg class="w-4 h-4 text-status-blocked flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+  </svg>
+  <div class="flex-1 flex flex-col gap-0.5">
+    <span class="font-semibold">Validation Error</span>
+    <span>A rule with this name already exists in this workspace.</span>
+  </div>
+</div>
+```
+
+---
+
+### 15.8 Success State Toast Notifications
+Upon successful completion of an administration action (rule created, toggled, deleted, or triggered), the interface notifies the user with a floating toast notification in the bottom right corner of the viewport.
+- **Toast Panel:** `fixed bottom-4 right-4 z-50 w-full max-w-sm bg-surface dark:bg-slate-900 border border-base border-l-4 border-l-status-done shadow-xl p-4 rounded-md flex items-start gap-3 animate-modal-pop`
+- **Dismiss Control:** `text-tertiary hover:text-primary p-0.5 rounded transition-all focus:outline-none focus:ring-1 focus:ring-accent-primary`
+- **Behavior:** Toasts must automatically fade out and unmount after `4000ms`.
+
+#### Tailwind HTML Markup Structure (Success Toast)
+```html
+<div
+  class="fixed bottom-4 right-4 z-50 w-full max-w-sm bg-surface dark:bg-slate-900 border border-base border-l-4 border-l-status-done shadow-xl p-4 rounded-md flex items-start gap-3 animate-modal-pop"
+  data-testid="success-toast"
+  role="status"
+  aria-live="polite"
+>
+  <!-- Success CircleCheck Icon -->
+  <svg class="w-5 h-5 text-status-done flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+
+  <div class="flex-1 flex flex-col gap-0.5">
+    <span class="text-sm font-semibold text-primary">Rule Created</span>
+    <span class="text-xs text-secondary leading-relaxed">The business rule "Auto-Move Parent to Done" has been successfully created.</span>
+  </div>
+
+  <button
+    class="text-tertiary hover:text-primary p-0.5 rounded transition-all focus:outline-none focus:ring-1 focus:ring-accent-primary"
+    aria-label="Dismiss notification"
+  >
+    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+  </button>
+</div>
+```
+
+---
+
+### 15.9 Playwright Test Anchors & Accessibility Landmarks (TDD & ARIA Constraints)
+The developer MUST implement the following specific anchors and identifiers to support validation and testing suites:
+
+| Component / Element | `data-testid` | `role` | ARIA / Accessibility Attribute |
+| :--- | :--- | :--- | :--- |
+| Settings screen wrapper | `rules-settings-container` | `region` | `aria-label="Workspace Business Rules Settings"` |
+| Add Rule button (header) | `add-rule-button` | `button` | `aria-haspopup="dialog"`, `aria-label="Create a new business rule"` |
+| Loading skeleton wrapper | `rules-loading-skeleton` | `status` | `aria-busy="true"`, `aria-label="Loading automated rules"` |
+| Empty state wrapper | `rules-empty-state` | `region` | `aria-label="No automation rules configured"` |
+| Rule list row item | `rule-row-{rule_id}` | `listitem` | N/A |
+| Rule active/inactive badge | `rule-status-badge` | `status` | N/A |
+| Rule status switch toggle | `rule-toggle-{rule_id}` | `switch` | `aria-checked="true/false"`, `aria-label="Toggle {rule_name} state"` |
+| Rule delete button | `rule-delete-{rule_id}` | `button` | `aria-label="Delete rule {rule_name}"` |
+| Create Rule Modal overlay | `create-rule-modal-overlay` | `none` | N/A |
+| Create Rule Modal dialog | `create-rule-modal` | `dialog` | `aria-modal="true"`, `aria-labelledby="rule-modal-title"`, `aria-describedby="rule-modal-description"` |
+| Modal Title element | `rule-modal-title` | N/A | `id="rule-modal-title"` |
+| Modal Description element | `rule-modal-description` | N/A | `id="rule-modal-description"` |
+| Modal Close button | `rule-modal-close` | `button` | `aria-label="Close modal"` |
+| Rule Name text input | `rule-name-input` | `textbox` | `aria-required="true"`, `id="rule-name"` |
+| Trigger Select dropdown | `rule-trigger-select` | `combobox` | `aria-required="true"`, `id="rule-trigger"` |
+| Target Column Select dropdown | `rule-column-select` | `combobox` | `aria-required="true"`, `id="rule-column"` (Conditional) |
+| Action Select dropdown | `rule-action-select` | `combobox` | `aria-required="true"`, `id="rule-action"` |
+| Assignee Select dropdown | `rule-assignee-select` | `combobox` | `aria-required="true"`, `id="rule-assignee"` (Conditional) |
+| Form Submit button | `rule-modal-submit` | `button` | `aria-label="Create rule"` |
+| Form Cancel button | `rule-modal-cancel` | `button` | `aria-label="Cancel rule creation"` |
+| Form Error banner alert | `rule-modal-error` | `alert` | `aria-live="assertive"` |
+| Success Toast notification | `success-toast` | `status` | `aria-live="polite"` |

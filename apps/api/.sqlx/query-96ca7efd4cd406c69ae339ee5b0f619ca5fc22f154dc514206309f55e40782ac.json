@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT COUNT(*) = 0 AS all_done\n                    FROM cards c\n                    INNER JOIN columns col ON c.current_column_id = col.id\n                    WHERE c.parent_id = $1 AND c.deleted_at IS NULL AND col.is_done = FALSE\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "all_done",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "96ca7efd4cd406c69ae339ee5b0f619ca5fc22f154dc514206309f55e40782ac"
+}

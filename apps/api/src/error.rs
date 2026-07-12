@@ -43,6 +43,9 @@ pub enum AppError {
 
     #[error("WebSocket error: {0}")]
     WebSocket(String),
+
+    #[error("Automation rule recursion limit exceeded")]
+    RecursionLimitExceeded,
 }
 
 impl IntoResponse for AppError {
@@ -99,6 +102,11 @@ impl IntoResponse for AppError {
                 (StatusCode::TOO_MANY_REQUESTS, msg.clone(), None)
             }
             AppError::WebSocket(ref msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone(), None),
+            AppError::RecursionLimitExceeded => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Automation rule recursion limit exceeded".to_string(),
+                Some("RECURSION_LIMIT_EXCEEDED".to_string()),
+            ),
         };
 
         let mut body = json!({

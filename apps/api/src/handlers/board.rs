@@ -65,7 +65,7 @@ pub struct UpdateChecklistItemPayload {
     pub completed_by: Option<Uuid>,
 }
 
-async fn authenticate_member(
+pub async fn authenticate_member(
     pool: &PgPool,
     headers: &axum::http::header::HeaderMap,
     workspace_id: Uuid,

@@ -57,6 +57,11 @@
         "ordinal": 10,
         "name": "payload",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "triggering_rule_id",
+        "type_info": "Uuid"
       }
     ],
     "parameters": {
@@ -71,6 +76,7 @@
       false,
       true,
       false,
+      true,
       true,
       true,
       true,
