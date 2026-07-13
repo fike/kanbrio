@@ -141,7 +141,7 @@ async fn test_arrival_departure_rules(pool: sqlx::PgPool) -> anyhow::Result<()> 
     );
 
     // 8. Try to move with ADMIN OVERRIDE (Should succeed!)
-    let move_success = Card::move_to(
+    let (move_success, _) = Card::move_to(
         &pool,
         MoveCard {
             card_id: card.id,

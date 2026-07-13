@@ -130,7 +130,7 @@ async fn test_card_blocking_and_movement_interception(pool: sqlx::PgPool) -> any
     assert!(unblocked_card.blocked_reason.is_none());
 
     // Verify card movement works after unblocking
-    let moved_card = Card::move_to(
+    let (moved_card, _) = Card::move_to(
         &pool,
         MoveCard {
             card_id: card.id,

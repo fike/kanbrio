@@ -66,7 +66,7 @@ async fn test_board_2d_context(pool: sqlx::PgPool) -> anyhow::Result<()> {
     assert_eq!(state.cards[0].id, card.id);
 
     // 5. Move Card (2D Transition)
-    let moved_card = Card::move_to(
+    let (moved_card, _) = Card::move_to(
         &pool,
         MoveCard {
             card_id: card.id,
