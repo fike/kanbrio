@@ -8,6 +8,7 @@ import CardHistory from '../CardHistory/CardHistory';
 import BlockerDrawer from '../Drawer/BlockerDrawer';
 import { useAuth } from '../AuthProvider';
 import { InlineCardForm } from './InlineCardForm';
+import { PresenceIndicator } from '../PresenceIndicator';
 
 interface BoardProps {
   workspaceId: string;
@@ -291,6 +292,7 @@ const Board: Component<BoardProps> = (props) => {
               return (
                 <div
                   class="w-[300px] p-3 flex items-center justify-between transition-colors duration-200 border-r border-base/50 last:border-r-0"
+
                   classList={{
                     'bg-orange-50': isAtLimit(),
                     'bg-red-50': isExceeded(),
@@ -329,6 +331,11 @@ const Board: Component<BoardProps> = (props) => {
               );
             }}
           </For>
+
+          {/* Presence indicator */}
+          <div class="ml-auto px-3 flex items-center">
+            <PresenceIndicator />
+          </div>
         </div>
 
         {/* Board Content: Swimlanes and Cards */}
