@@ -23,6 +23,12 @@ module.exports = {
           doing: 'var(--color-status-doing)',
           done: 'var(--color-status-done)',
           blocked: 'var(--color-status-blocked)',
+        },
+        ws: {
+          connected: '#22C55E',
+          connecting: '#EAB308',
+          reconnecting: '#F97316',
+          disconnected: '#EF4444',
         }
       },
       fontFamily: {
