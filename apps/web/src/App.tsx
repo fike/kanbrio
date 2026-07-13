@@ -1,5 +1,5 @@
 import { type Component, createEffect, Show, type JSX } from 'solid-js';
-import { Route, useNavigate, useParams } from '@solidjs/router';
+import { Route, useNavigate, useParams, useLocation } from '@solidjs/router';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './components/Login/Login';
@@ -8,15 +8,19 @@ import { WorkspaceSelector } from './components/WorkspaceSelector/WorkspaceSelec
 import Board from './components/Board/Board';
 import ConnectionStatus from './components/ConnectionStatus';
 import { useWebSocket } from './hooks/useWebSocket';
+import { SettingsPage } from './components/Settings/SettingsPage';
 
 export function WorkspaceLayout() {
   const auth = useAuth();
   const params = useParams();
+  const location = useLocation();
   console.log('[WorkspaceLayout] Rendered with params:', JSON.stringify(params));
 
   // Connect WebSocket for real-time board events
   const workspaceId = params.workspace_id || '';
   const ws = useWebSocket(workspaceId);
+
+  const isOnSettings = () => location.pathname.endsWith('/settings');
 
   return (
     <ProtectedRoute>
@@ -30,9 +34,21 @@ export function WorkspaceLayout() {
           </div>
 
           <nav class="flex items-center gap-4 text-xs font-medium text-secondary">
-            <span class="px-2 py-1 bg-elevated rounded border border-base">Board</span>
+            <a
+              href={`/w/${workspaceId}`}
+              class="px-2 py-1 rounded border border-base transition-colors"
+              classList={{ 'bg-elevated': !isOnSettings(), 'opacity-60 hover:bg-elevated': isOnSettings() }}
+            >
+              Board
+            </a>
             <span class="opacity-40">Analytics</span>
-            <span class="opacity-40">Settings</span>
+            <a
+              href={`/w/${workspaceId}/settings`}
+              class="px-2 py-1 rounded border border-transparent transition-colors"
+              classList={{ 'bg-elevated border-base': isOnSettings(), 'opacity-60 hover:bg-elevated': !isOnSettings() }}
+            >
+              Settings
+            </a>
           </nav>
 
           <div class="flex items-center gap-3">
@@ -55,9 +71,14 @@ export function WorkspaceLayout() {
             <WorkspaceSelector />
           </aside>
 
-          {/* Board content */}
+          {/* Content (Board or Settings) */}
           <main class="flex-1 overflow-hidden">
-            <Board workspaceId={params.workspace_id || ''} />
+            <Show when={isOnSettings()}>
+              <SettingsPage workspaceId={params.workspace_id || ''} />
+            </Show>
+            <Show when={!isOnSettings()}>
+              <Board workspaceId={params.workspace_id || ''} />
+            </Show>
           </main>
         </div>
 
@@ -126,6 +147,7 @@ export const AppRoutes = () => (
     <Route path="/login" component={Login} />
     <Route path="/register" component={Register} />
     <Route path="/w/:workspace_id" component={WorkspaceLayout} />
+    <Route path="/w/:workspace_id/settings" component={WorkspaceLayout} />
     <Route path="/" component={IntelligentRedirect} />
     <Route path="*path" component={IntelligentRedirect} />
   </>
