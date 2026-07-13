@@ -227,8 +227,15 @@ async fn handle_ws_connection(
                     Some(Ok(Message::Ping(payload))) => {
                         let _ = socket.send(Message::Pong(payload)).await;
                     }
-                    Some(Ok(Message::Text(_))) => {
-                        // Future: client-to-server messages (e.g. presence updates)
+                    Some(Ok(Message::Text(text))) => {
+                        // Handle client-to-server messages (presence heartbeats)
+                        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&text)
+                            && msg.get("type").and_then(|v| v.as_str()) == Some("ping")
+                        {
+                            let _ = socket.send(Message::Text(
+                                serde_json::json!({"type": "pong"}).to_string(),
+                            )).await;
+                        }
                     }
                     Some(Ok(Message::Binary(_))) => {
                         // Ignore binary messages
