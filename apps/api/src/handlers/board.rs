@@ -277,7 +277,7 @@ pub async fn move_card(
         return Err(AppError::Forbidden);
     }
 
-    let card = Card::move_to(
+    let (card, rule_actions) = Card::move_to(
         &pool,
         MoveCard {
             card_id,
@@ -291,10 +291,37 @@ pub async fn move_card(
     )
     .await?;
 
-    // Publish WS event
+    // Publish WS event for the original card move
     ws_hub
         .publish(workspace_id, BoardEvent::CardMoved { card: card.clone() })
         .await;
+
+    // Publish WS events for automated rule actions
+    for action in &rule_actions {
+        match action.action.as_str() {
+            "moved" => {
+                ws_hub
+                    .publish(
+                        workspace_id,
+                        BoardEvent::CardMoved {
+                            card: action.card.clone(),
+                        },
+                    )
+                    .await;
+            }
+            "assigned" => {
+                ws_hub
+                    .publish(
+                        workspace_id,
+                        BoardEvent::CardAssigned {
+                            card: action.card.clone(),
+                        },
+                    )
+                    .await;
+            }
+            _ => {}
+        }
+    }
 
     Ok(Json(card))
 }

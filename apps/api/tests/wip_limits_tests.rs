@@ -111,7 +111,10 @@ async fn test_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Result<()> {
     .await;
 
     assert!(move_result_success.is_ok());
-    assert_eq!(move_result_success.unwrap().current_column_id, col_limit_id);
+    assert_eq!(
+        move_result_success.unwrap().0.current_column_id,
+        col_limit_id
+    );
 
     // 6. Action: Attempt to CREATE another card directly in the limited column (Failure)
     let create_result = Card::create(
@@ -190,7 +193,7 @@ async fn test_wip_limit_ignore_same_column(pool: sqlx::PgPool) -> anyhow::Result
     .await;
 
     assert!(move_result.is_ok());
-    assert_eq!(move_result.unwrap().current_swimlane_id, lane2_id);
+    assert_eq!(move_result.unwrap().0.current_swimlane_id, lane2_id);
 
     Ok(())
 }
@@ -306,7 +309,7 @@ async fn test_swimlane_wip_limit_enforcement(pool: sqlx::PgPool) -> anyhow::Resu
 
     assert!(move_result_success.is_ok());
     assert_eq!(
-        move_result_success.unwrap().current_swimlane_id,
+        move_result_success.unwrap().0.current_swimlane_id,
         lane_limit_id
     );
 

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Postgres, Transaction};
 use uuid::Uuid;
 
+use super::card::Card;
+
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct BusinessRule {
     pub id: Uuid,
@@ -26,6 +28,17 @@ pub struct TriggerContext {
     pub parent_id: Option<Uuid>,
 }
 
+/// An action performed by the rule engine that should be broadcast via WS.
+#[derive(Debug, Clone)]
+pub struct RuleAction {
+    /// "moved" or "assigned"
+    pub action: String,
+    /// The card that was modified
+    pub card: Card,
+    /// The rule that triggered this action
+    pub rule_id: Uuid,
+}
+
 struct PendingTrigger {
     trigger_type: String,
     context: TriggerContext,
@@ -44,7 +57,8 @@ impl RuleEngine {
         initial_trigger: &str,
         initial_context: &TriggerContext,
         _depth: u32,
-    ) -> Result<(), crate::AppError> {
+    ) -> Result<Vec<RuleAction>, crate::AppError> {
+        let mut actions = Vec::new();
         let mut stack = vec![PendingTrigger {
             trigger_type: initial_trigger.to_string(),
             context: initial_context.clone(),
@@ -83,8 +97,15 @@ impl RuleEngine {
 
                 match rule.action_type.as_str() {
                     "move_parent_card" => {
-                        let new_triggers =
+                        let (new_triggers, moved_card) =
                             Self::execute_move_parent(tx, rule, &current.context).await?;
+                        if let Some(card) = moved_card {
+                            actions.push(RuleAction {
+                                action: "moved".to_string(),
+                                card,
+                                rule_id: rule.id,
+                            });
+                        }
                         for t in new_triggers {
                             stack.push(PendingTrigger {
                                 trigger_type: t.0,
@@ -94,7 +115,15 @@ impl RuleEngine {
                         }
                     }
                     "assign_card" => {
-                        Self::execute_assign_card(tx, rule, &current.context).await?;
+                        if let Some(assigned_card) =
+                            Self::execute_assign_card(tx, rule, &current.context).await?
+                        {
+                            actions.push(RuleAction {
+                                action: "assigned".to_string(),
+                                card: assigned_card,
+                                rule_id: rule.id,
+                            });
+                        }
                     }
                     _ => {
                         tracing::warn!(
@@ -106,7 +135,7 @@ impl RuleEngine {
             }
         }
 
-        Ok(())
+        Ok(actions)
     }
 
     fn matches_trigger(rule: &BusinessRule, context: &TriggerContext) -> bool {
@@ -133,12 +162,12 @@ impl RuleEngine {
         tx: &mut Transaction<'_, Postgres>,
         rule: &BusinessRule,
         context: &TriggerContext,
-    ) -> Result<Vec<(String, TriggerContext)>, crate::AppError> {
+    ) -> Result<(Vec<(String, TriggerContext)>, Option<Card>), crate::AppError> {
         let mut new_triggers = Vec::new();
 
         let parent_id = match context.parent_id {
             Some(id) => id,
-            None => return Ok(new_triggers),
+            None => return Ok((new_triggers, None)),
         };
 
         let parent = sqlx::query_as!(
@@ -285,16 +314,17 @@ impl RuleEngine {
 
             new_triggers.push(("child_status_changed".to_string(), child_context.clone()));
             new_triggers.push(("card_entered_column".to_string(), child_context));
+            return Ok((new_triggers, Some(updated_parent)));
         }
 
-        Ok(new_triggers)
+        Ok((new_triggers, None))
     }
 
     async fn execute_assign_card(
         tx: &mut Transaction<'_, Postgres>,
         rule: &BusinessRule,
         context: &TriggerContext,
-    ) -> Result<(), crate::AppError> {
+    ) -> Result<Option<Card>, crate::AppError> {
         let assignee_id: Option<Uuid> = if rule
             .action_config
             .get("clear_assignee")
@@ -374,17 +404,19 @@ impl RuleEngine {
             }
         }
 
-        sqlx::query!(
+        let updated_card = sqlx::query_as!(
+            Card,
             r#"
             UPDATE cards
             SET assigned_user_id = $1, updated_at = NOW()
             WHERE id = $2 AND workspace_id = $3
+            RETURNING *
             "#,
             assignee_id,
             context.card_id,
             context.workspace_id
         )
-        .execute(&mut **tx)
+        .fetch_one(&mut **tx)
         .await?;
 
         sqlx::query!(
@@ -401,7 +433,7 @@ impl RuleEngine {
         .execute(&mut **tx)
         .await?;
 
-        Ok(())
+        Ok(Some(updated_card))
     }
 }
 

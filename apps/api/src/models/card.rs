@@ -134,7 +134,10 @@ pub struct MoveCard {
 impl Card {
     #[tracing::instrument(skip(pool))]
     #[allow(clippy::collapsible_if)]
-    pub async fn move_to(pool: &sqlx::PgPool, data: MoveCard) -> Result<Self, crate::AppError> {
+    pub async fn move_to(
+        pool: &sqlx::PgPool,
+        data: MoveCard,
+    ) -> Result<(Self, Vec<crate::models::rule::RuleAction>), crate::AppError> {
         let mut tx = pool.begin().await?;
 
         // 1. Get current state with workspace isolation
@@ -385,6 +388,7 @@ impl Card {
         let column_changed = current_card.current_column_id != updated_card.current_column_id;
 
         // 5. Evaluate business rules (AC-2, AC-3, AC-4)
+        let mut rule_actions = Vec::new();
         if column_changed {
             let trigger_ctx = crate::models::rule::TriggerContext {
                 card_id: updated_card.id,
@@ -393,7 +397,7 @@ impl Card {
                 to_column_id: updated_card.current_column_id,
                 parent_id: current_card.parent_id,
             };
-            crate::models::rule::RuleEngine::evaluate(
+            let mut child_actions = crate::models::rule::RuleEngine::evaluate(
                 &mut tx,
                 data.workspace_id,
                 "child_status_changed",
@@ -401,7 +405,8 @@ impl Card {
                 0,
             )
             .await?;
-            crate::models::rule::RuleEngine::evaluate(
+            rule_actions.append(&mut child_actions);
+            let mut column_actions = crate::models::rule::RuleEngine::evaluate(
                 &mut tx,
                 data.workspace_id,
                 "card_entered_column",
@@ -409,6 +414,7 @@ impl Card {
                 0,
             )
             .await?;
+            rule_actions.append(&mut column_actions);
         }
 
         // 6. Log transition (Issue #3)
@@ -449,7 +455,7 @@ impl Card {
 
         tx.commit().await?;
 
-        Ok(updated_card)
+        Ok((updated_card, rule_actions))
     }
 
     #[tracing::instrument(skip(pool))]
