@@ -19,6 +19,7 @@ use crate::handlers::board::{
     set_user_wip_limit, unblock_card, update_checklist_item,
 };
 use crate::handlers::health::health;
+use crate::handlers::members::list_members;
 use crate::handlers::observability::{
     init_metrics, init_start_time, init_tracing, observability_health, observability_metrics,
     trace_context, track_metrics,
@@ -101,6 +102,7 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route("/api/auth/callback/:provider", get(oauth_callback))
         .route("/api/workspaces", get(workspaces).post(create_workspace))
         .route("/api/workspaces/:workspace_id/board", get(get_board_state))
+        .route("/api/workspaces/:workspace_id/members", get(list_members))
         .route("/api/workspaces/:workspace_id/cards", post(create_card))
         .route(
             "/api/workspaces/:workspace_id/cards/:card_id/move",

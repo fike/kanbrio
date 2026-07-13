@@ -28,4 +28,4 @@ repos:
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        exclude: .beads/
+        exclude: (.beads/|.sqlx/)
