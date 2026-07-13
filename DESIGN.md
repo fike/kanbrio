@@ -1784,3 +1784,234 @@ The developer MUST implement the following specific anchors and identifiers to s
 | Form Cancel button | `rule-modal-cancel` | `button` | `aria-label="Cancel rule creation"` |
 | Form Error banner alert | `rule-modal-error` | `alert` | `aria-live="assertive"` |
 | Success Toast notification | `success-toast` | `status` | `aria-live="polite"` |
+
+---
+
+## 16. Component Styling Guidelines: Analytics & Metrics
+
+This section defines the layout, states, and interactive behaviors for the Analytics page at `/workspaces/:workspace_id/analytics`.
+
+### 16.1 Route & Layout Structure
+
+- **Page Container:** `w-full max-w-6xl mx-auto p-6 flex flex-col gap-6 h-full overflow-y-auto`
+- **Header:** `flex items-center justify-between pb-4 border-b border-base`
+  - **Title:** `text-lg font-semibold tracking-tight text-primary`
+  - **Subtitle:** `text-xs text-secondary` — "Board analytics and flow metrics"
+- **Tab Navigation:** `flex items-center gap-1 border-b border-base mb-6`
+  - **Tab Button (active):** `px-4 py-2 text-sm font-medium text-primary border-b-2 border-accent-primary`
+  - **Tab Button (inactive):** `px-4 py-2 text-sm font-medium text-secondary hover:text-primary transition-colors border-b-2 border-transparent`
+
+#### Tailwind HTML Markup Structure (Tabs)
+```html
+<div class="flex items-center gap-1 border-b border-base mb-6" role="tablist" data-testid="analytics-tabs">
+  <button role="tab" aria-selected="true" class="px-4 py-2 text-sm font-medium text-primary border-b-2 border-accent-primary" data-testid="tab-cfd">
+    Cumulative Flow
+  </button>
+  <button role="tab" aria-selected="false" class="px-4 py-2 text-sm font-medium text-secondary hover:text-primary transition-colors border-b-2 border-transparent" data-testid="tab-cycle-time">
+    Cycle Time
+  </button>
+  <button role="tab" aria-selected="false" class="px-4 py-2 text-sm font-medium text-secondary hover:text-primary transition-colors border-b-2 border-transparent" data-testid="tab-flow-efficiency">
+    Flow Efficiency
+  </button>
+  <button role="tab" aria-selected="false" class="px-4 py-2 text-sm font-medium text-secondary hover:text-primary transition-colors border-b-2 border-transparent" data-testid="tab-monte-carlo">
+    Monte Carlo
+  </button>
+</div>
+```
+
+---
+
+### 16.2 Chart Card Container (Shared)
+
+All charts share a common card container:
+
+- **Card:** `w-full p-4 bg-surface border border-base rounded-lg shadow-sm flex flex-col gap-4`
+- **Card Header:** `flex items-center justify-between`
+  - **Chart Title:** `text-sm font-semibold text-primary`
+  - **Chart Description:** `text-[11px] text-secondary`
+- **Card Body (Chart Area):** `w-full h-[300px] relative`
+- **Loading State:** `absolute inset-0 flex items-center justify-center bg-surface/80 z-10`
+- **Empty State:** `flex flex-col items-center justify-center h-full text-center gap-2`
+- **Error State:** `bg-status-blocked/10 border border-status-blocked/20 text-xs rounded-md p-3`
+
+#### Tailwind HTML Markup Structure (Card)
+```html
+<div class="w-full p-4 bg-surface border border-base rounded-lg shadow-sm flex flex-col gap-4" data-testid="analytics-chart-card">
+  <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-0.5">
+      <h3 class="text-sm font-semibold text-primary">Cycle Time Scatter</h3>
+      <span class="text-[11px] text-secondary">Last 90 days • P50: 2d, P85: 5d</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <!-- Date range filter or scope selector -->
+    </div>
+  </div>
+  <div class="w-full h-[300px] relative" data-testid="chart-area">
+    <!-- Loading overlay -->
+    <div class="absolute inset-0 flex items-center justify-center bg-surface/80 z-10 animate-pulse" data-testid="chart-loading-overlay">
+      <div class="flex flex-col items-center gap-2">
+        <div class="w-8 h-8 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+        <span class="text-xs text-secondary">Loading chart...</span>
+      </div>
+    </div>
+
+    <!-- Chart canvas (rendered by D3/Chart.js) -->
+    <canvas id="cycle-time-chart" class="w-full h-full" />
+
+    <!-- Empty state overlay -->
+    <div class="absolute inset-0 flex flex-col items-center justify-center text-center gap-2 hidden" data-testid="chart-empty-state">
+      <div class="w-10 h-10 rounded-full bg-elevated flex items-center justify-center text-tertiary">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      </div>
+      <span class="text-sm font-medium text-primary">No data yet</span>
+      <span class="text-xs text-secondary max-w-xs">Complete some cards to see cycle time trends.</span>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+### 16.3 Chart-Specific Details
+
+#### 16.3.1 Cumulative Flow Diagram (CFD)
+- **Chart Type:** Stacked area chart
+- **X Axis:** Date (time series)
+- **Y Axis:** Card count
+- **Series:** One stacked area per column, ordered by column position
+- **Color Mapping:** Use column-specific colors or auto-generate from `accent-primary` hue rotation
+- **Interaction:** Hover shows tooltip with date and per-column counts
+- **Date Range Picker:** `flex items-center gap-2` with two date inputs or preset buttons (7d, 30d, 90d)
+
+#### 16.3.2 Cycle Time Scatter Plot
+- **Chart Type:** Scatter plot with percentile lines
+- **X Axis:** Date (card completion date)
+- **Y Axis:** Cycle time (hours/days, logarithmic scale recommended)
+- **Dataset:** Each dot = one completed card
+- **Percentile Lines:** Horizontal dashed lines for P50, P85, P95
+  - Line style: `stroke-dasharray="4,4"`, opacity 0.5
+  - Label: text at right edge of chart
+- **Interaction:** Hover on dot shows card title, cycle time, assignee, completion date
+- **Color:** Dots colored by swimlane or assignee (if `scope` filter active)
+
+#### 16.3.3 Flow Efficiency (Donut Chart)
+- **Chart Type:** Donut (ring) chart
+- **Segments:** Active time (green, `#22C55E`) / Wait time (orange, `#F97316`)
+- **Center Label:** Efficiency percentage in `text-2xl font-bold text-primary`, with "efficiency" caption in `text-xs text-secondary`
+- **Side Panel (Optional):** Breakdown by column — `flex flex-col gap-2 text-xs`
+  - Each row: column title, wait time, card count
+
+#### 16.3.4 Aging WIP Table
+- **Table:** `w-full text-xs`
+  - **Header:** `text-[10px] font-semibold text-secondary uppercase tracking-wider border-b border-base`
+  - **Row:** `border-b border-base last:border-b-0 hover:bg-elevated/50 transition-colors`
+  - **Columns:** Card Title, Column, Assignee, Idle Time, Action
+- **Idle Time Badge:** Color-coded by severity
+  - `< threshold`: `text-secondary` (normal)
+  - `>= threshold`: `text-status-doing font-semibold` (warning)
+  - `>= threshold * 2`: `text-status-blocked font-semibold` (critical)
+- **Empty State:** "No stagnant cards" with checkmark icon
+
+#### 16.3.5 Monte Carlo Histogram
+- **Chart Type:** Vertical bar histogram
+- **X Axis:** Days to complete
+- **Y Axis:** Probability (0-100%)
+- **Dataset:** Bars grouped by day, colored by cumulative probability:
+  - <= P50: `bg-status-done/70`
+  - P50-P85: `bg-status-doing/70`
+  - P85-P95: `bg-status-blocked/70`
+  - > P95: `bg-status-blocked/40` (grey-red)
+- **Percentile Markers:** Vertical dashed lines at P50, P75, P85, P95
+- **Legend:** `flex items-center gap-4 text-[10px] text-secondary` showing percentile key
+- **Summary Row below chart:** `flex items-center gap-6 text-xs`
+  - "P50: 5 days"
+  - "P85: 10 days"
+  - "P95: 14 days"
+  - "Simulations: 1,000"
+  - "Cards in scope: 23"
+
+---
+
+### 16.4 Empty & Error States
+
+| State | Behavior | Visual |
+|:---|:---|:---|
+| **Empty** | No cards completed in window | Centered icon + "No data yet" + descriptive text |
+| **Error** | API 4xx/5xx or network failure | `bg-status-blocked/10` banner with retry button |
+| **Loading** | Initial fetch or scope change | Spinner overlay + "Loading chart..." text |
+| **Partial** | Some data available but incomplete | Render available data, show warning banner below |
+
+#### Error State HTML
+```html
+<div class="bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex items-center justify-between" data-testid="chart-error-banner" role="alert">
+  <span>Failed to load chart data: Network error</span>
+  <button class="text-accent-primary hover:text-accent-primary/95 font-semibold underline underline-offset-2" data-testid="chart-retry-button">
+    Retry
+  </button>
+</div>
+```
+
+---
+
+### 16.5 Date Range & Scope Filters
+
+#### Date Range
+```html
+<div class="flex items-center gap-2" data-testid="date-range-filter">
+  <button class="px-3 py-1 text-xs font-medium rounded-md transition-colors bg-accent-primary text-white" data-testid="date-7d">7d</button>
+  <button class="px-3 py-1 text-xs font-medium rounded-md transition-colors bg-surface border border-base text-secondary hover:bg-elevated" data-testid="date-30d">30d</button>
+  <button class="px-3 py-1 text-xs font-medium rounded-md transition-colors bg-surface border border-base text-secondary hover:bg-elevated" data-testid="date-90d">90d</button>
+  <input type="date" class="px-2 py-1 text-xs bg-surface border border-base rounded-md text-primary" data-testid="date-custom-from" />
+  <span class="text-xs text-secondary">to</span>
+  <input type="date" class="px-2 py-1 text-xs bg-surface border border-base rounded-md text-primary" data-testid="date-custom-to" />
+</div>
+```
+
+#### Scope Filter
+```html
+<select class="px-3 py-1 text-xs bg-surface border border-base rounded-md text-primary" data-testid="scope-filter">
+  <option value="all">All cards</option>
+  <option value="swimlane:{id}">Swimlane: Standard</option>
+  <option value="assignee:{id}">Assignee: Alice</option>
+</select>
+```
+
+---
+
+### 16.6 Accessibility (A11y) Constraints
+
+- All charts must have `role="img"` with an `aria-label` describing the chart type and key insight (e.g., "Cycle Time scatter plot: P50 is 2 days, P85 is 5 days").
+- Interactive data points must be keyboard-navigable (tabindex="0") and announce data on focus via `aria-describedby`.
+- Color is not the only differentiator — use patterns or labels in addition to color.
+- Date inputs use native `<input type="date">` for built-in accessibility.
+- Tab panel uses `role="tablist"`, each tab has `role="tab"` and `aria-selected`.
+- Tab content panels have `role="tabpanel"` and `aria-labelledby` referencing the tab.
+
+### 16.7 Playwright Test Anchors
+
+| Element | `data-testid` |
+|:---|:---|
+| Analytics page container | `analytics-page` |
+| Tab navigation | `analytics-tabs` |
+| Tab: CFD | `tab-cfd` |
+| Tab: Cycle Time | `tab-cycle-time` |
+| Tab: Flow Efficiency | `tab-flow-efficiency` |
+| Tab: Monte Carlo | `tab-monte-carlo` |
+| Chart card wrapper | `analytics-chart-card` |
+| Chart canvas/area | `chart-area` |
+| Loading overlay | `chart-loading-overlay` |
+| Empty state | `chart-empty-state` |
+| Error banner | `chart-error-banner` |
+| Retry button | `chart-retry-button` |
+| Date range filter container | `date-range-filter` |
+| Date preset: 7d | `date-7d` |
+| Date preset: 30d | `date-30d` |
+| Date preset: 90d | `date-90d` |
+| Custom date from | `date-custom-from` |
+| Custom date to | `date-custom-to` |
+| Scope filter dropdown | `scope-filter` |
+| Aging WIP table | `aging-wip-table` |
+| Aging WIP row | `aging-wip-row-{card_id}` |
+| Monte Carlo summary | `monte-carlo-summary` |
