@@ -2,10 +2,16 @@ import { createSignal, onMount, onCleanup, type Accessor } from 'solid-js';
 
 export type WSStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
 
+export interface ViewerInfo {
+  id: string;
+  name: string;
+}
+
 export interface WebSocketState {
   status: Accessor<WSStatus>;
   reconnectCount: Accessor<number>;
   lastEvent: Accessor<unknown | null>;
+  activeViewers: Accessor<ViewerInfo[]>;
 }
 
 /**
@@ -42,6 +48,7 @@ export function useWebSocket(workspaceId: string): WebSocketState {
   const [status, setStatus] = createSignal<WSStatus>('disconnected');
   const [reconnectCount, setReconnectCount] = createSignal(0);
   const [lastEvent, setLastEvent] = createSignal<unknown | null>(null);
+  const [activeViewers, setActiveViewers] = createSignal<ViewerInfo[]>([]);
 
   onMount(() => {
     let socket: WebSocket | null = null;
@@ -108,6 +115,32 @@ export function useWebSocket(workspaceId: string): WebSocketState {
       socket.onmessage = (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
+          const msgType = data.type as string | undefined;
+
+          // Handle pong from server (heartbeat response)
+          if (msgType === 'pong') {
+            if (pongTimeout) {
+              clearTimeout(pongTimeout);
+              pongTimeout = null;
+            }
+            return;
+          }
+
+          // Track presence
+          if (msgType === 'user_joined') {
+            setActiveViewers((prev) => {
+              if (prev.some((v) => v.id === data.user_id)) return prev;
+              return [...prev, { id: data.user_id, name: data.username }];
+            });
+            return;
+          }
+          if (msgType === 'user_left') {
+            setActiveViewers((prev) =>
+              prev.filter((v) => v.id !== data.user_id),
+            );
+            return;
+          }
+
           setLastEvent(data);
 
           // Dispatch as a custom event on window for any listener
@@ -115,7 +148,7 @@ export function useWebSocket(workspaceId: string): WebSocketState {
             new CustomEvent('kanbrio:board:event', { detail: data }),
           );
         } catch {
-          // Non-JSON message (e.g. ping/pong handled separately)
+          // Non-JSON message
         }
       };
 
@@ -146,5 +179,5 @@ export function useWebSocket(workspaceId: string): WebSocketState {
     });
   });
 
-  return { status, reconnectCount, lastEvent };
+  return { status, reconnectCount, lastEvent, activeViewers };
 }
