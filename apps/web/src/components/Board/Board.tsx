@@ -1,4 +1,4 @@
-import { type Component, For, Show, createMemo, createSignal, onMount, type JSX } from 'solid-js';
+import { type Component, For, Show, createMemo, createSignal, onMount, onCleanup, type JSX } from 'solid-js';
 import { createQuery, createMutation, useQueryClient } from '@tanstack/solid-query';
 import { fetchBoardState, moveCard, blockCard, unblockCard, updateChecklistItem, type BoardState } from '../../api/board';
 import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
@@ -64,6 +64,30 @@ const Board: Component<BoardProps> = (props) => {
   const [shakingCardId, setShakingCardId] = createSignal<string | null>(null);
   const [toast, setToast] = createSignal<{ message: string; visible: boolean } | null>(null);
   const [activeIntersection, setActiveIntersection] = createSignal<{ columnId: string; swimlaneId: string } | null>(null);
+  const [recentlyMutatedCardIds, setRecentlyMutatedCardIds] = createSignal<Set<string>>(new Set());
+
+  // Listen for remote mutation events from WebSocket
+  const handleBoardEvent = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (!detail) return;
+    const cardId = detail.card?.id || detail.card_id;
+    if (!cardId) return;
+    setRecentlyMutatedCardIds((prev) => {
+      const next = new Set(prev);
+      next.add(cardId);
+      return next;
+    });
+    setTimeout(() => {
+      setRecentlyMutatedCardIds((prev) => {
+        const next = new Set(prev);
+        next.delete(cardId);
+        return next;
+      });
+    }, 800);
+  };
+
+  window.addEventListener('kanbrio:board:event', handleBoardEvent);
+  onCleanup(() => window.removeEventListener('kanbrio:board:event', handleBoardEvent));
 
   const showToast = (message: string) => {
     setToast({ message, visible: true });
@@ -421,6 +445,7 @@ const Board: Component<BoardProps> = (props) => {
                                     isBlocked={card.is_blocked}
                                     blockerReason={card.blocked_reason || undefined}
                                     isShaking={shakingCardId() === card.id}
+                                    isRemoteMutation={recentlyMutatedCardIds().has(card.id)}
                                     subtasksCount={completedSub()}
                                     totalSubtasks={totalSub()}
                                     checklists={query.data!.checklists.filter(c => c.card_id === card.id)}
