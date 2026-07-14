@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                c.id AS card_id,\n                c.title,\n                col.title AS column_title,\n                u.name AS assignee_name,\n                (EXTRACT(EPOCH FROM (NOW() - COALESCE(\n                    (SELECT ct.occurred_at FROM card_transitions ct\n                     WHERE ct.card_id = c.id AND ct.to_column_id = c.current_column_id\n                     ORDER BY ct.occurred_at DESC LIMIT 1),\n                    c.created_at\n                ))) / 3600.0)::float8 AS idle_hours,\n                COALESCE(\n                    (SELECT ct.occurred_at FROM card_transitions ct\n                     WHERE ct.card_id = c.id AND ct.to_column_id = c.current_column_id\n                     ORDER BY ct.occurred_at DESC LIMIT 1),\n                    c.created_at\n                ) AS entered_column_at\n            FROM cards c\n            INNER JOIN columns col ON col.id = c.current_column_id\n            LEFT JOIN users u ON u.id = c.assigned_user_id\n            WHERE c.workspace_id = $1\n              AND c.deleted_at IS NULL\n              AND c.is_archived = FALSE\n              AND col.is_done = FALSE\n              AND (EXTRACT(EPOCH FROM (NOW() - COALESCE(\n                    (SELECT ct.occurred_at FROM card_transitions ct\n                     WHERE ct.card_id = c.id AND ct.to_column_id = c.current_column_id\n                     ORDER BY ct.occurred_at DESC LIMIT 1),\n                    c.created_at\n                ))) / 3600.0)::float8 > ($2 * 24)::float8\n            ORDER BY idle_hours DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "card_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "column_title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "assignee_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "idle_hours",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 5,
+        "name": "entered_column_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "dda121ee2fe8d624726c704cb135888070be5dbcd8090ecff36d9ae026ee94c0"
+}

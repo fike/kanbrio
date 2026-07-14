@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COALESCE(SUM(\n                (EXTRACT(EPOCH FROM (NOW() - c.created_at)) / 3600.0)::float8\n            ), 0.0)::float8\n            FROM cards c\n            INNER JOIN columns col ON col.id = c.current_column_id\n            WHERE c.workspace_id = $1\n              AND c.deleted_at IS NULL\n              AND c.is_archived = FALSE\n              AND col.is_done = FALSE\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "coalesce",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ace7dd5ce80c582aac47a3c6ba98e6866f9f8b524b7104dd48071747474e80b1"
+}

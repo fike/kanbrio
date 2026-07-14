@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                col.id AS column_id,\n                col.title,\n                COUNT(DISTINCT c.id)::int8 AS card_count,\n                COALESCE(SUM(\n                    (EXTRACT(EPOCH FROM (NOW() - COALESCE(\n                        (SELECT ct.occurred_at FROM card_transitions ct\n                         WHERE ct.card_id = c.id AND ct.to_column_id = c.current_column_id\n                         ORDER BY ct.occurred_at DESC LIMIT 1),\n                        c.created_at\n                    ))) / 3600.0)::float8\n                ), 0.0) AS total_wait_hours\n            FROM cards c\n            INNER JOIN columns col ON col.id = c.current_column_id\n            WHERE c.workspace_id = $1\n              AND c.deleted_at IS NULL\n              AND c.is_archived = FALSE\n              AND col.is_done = FALSE\n            GROUP BY col.id, col.title\n            ORDER BY total_wait_hours DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "column_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "card_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_wait_hours",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "9c7006fb3b2e4f2fde110fb5bdadfb6ed3abe8e03b1804d47096016cad1ee2c6"
+}
