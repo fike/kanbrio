@@ -165,6 +165,9 @@ static TRACING_INIT: std::sync::Once = std::sync::Once::new();
 /// Initialize the OpenTelemetry tracer and tracing subscriber.
 pub fn init_tracing() {
     TRACING_INIT.call_once(|| {
+        // Bridge log records (used by sqlx) to tracing events
+        let _ = tracing_log::LogTracer::init();
+
         global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
 
         let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
