@@ -1,4 +1,5 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
+use rand::Rng;
 use serde::Serialize;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -352,4 +353,326 @@ struct AgingWipRow {
     assignee_name: Option<String>,
     idle_hours: Option<f64>,
     entered_column_at: Option<DateTime<Utc>>,
+}
+
+// --- CFD types ---
+
+#[derive(Debug, Serialize)]
+pub struct CFDColumn {
+    pub id: Uuid,
+    pub title: String,
+    pub color: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CFDPoint {
+    pub date: NaiveDate,
+    pub counts: std::collections::HashMap<Uuid, i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CFDResponse {
+    pub columns: Vec<CFDColumn>,
+    pub data_points: Vec<CFDPoint>,
+}
+
+// --- Monte Carlo types ---
+
+#[derive(Debug, Serialize)]
+pub struct MonteCarloBin {
+    pub days: i64,
+    pub probability: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MonteCarloPercentiles {
+    pub p50: i64,
+    pub p75: i64,
+    pub p85: i64,
+    pub p95: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MonteCarloSimulations {
+    pub histogram: Vec<MonteCarloBin>,
+    pub percentiles: MonteCarloPercentiles,
+    pub total_cards: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MonteCarloResponse {
+    pub throughput_data: Vec<i64>,
+    pub simulations: MonteCarloSimulations,
+}
+
+// --- BoardAnalytics impl extensions ---
+
+impl BoardAnalytics {
+    /// Compute Cumulative Flow Diagram data.
+    /// Uses on-the-fly aggregation from card_transitions.
+    pub async fn cfd(
+        pool: &PgPool,
+        workspace_id: Uuid,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<CFDResponse, crate::AppError> {
+        // Get columns for this workspace
+        let col_rows = sqlx::query_as!(
+            CFDColumnRow,
+            r#"
+            SELECT id, title, is_done
+            FROM columns
+            WHERE workspace_id = $1
+            ORDER BY position ASC
+            "#,
+            workspace_id,
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let columns: Vec<CFDColumn> = col_rows
+            .into_iter()
+            .map(|r| CFDColumn {
+                id: r.id,
+                title: r.title,
+                color: if r.is_done { "#22C55E" } else { "#2563EB" }.to_string(),
+            })
+            .collect();
+
+        if columns.is_empty() {
+            return Ok(CFDResponse {
+                columns: vec![],
+                data_points: vec![],
+            });
+        }
+
+        let column_ids: Vec<Uuid> = columns.iter().map(|c| c.id).collect();
+
+        // Get all transitions that happened up to the "to" date
+        // We'll rebuild card positions for each snapshot date
+        let transitions = sqlx::query_as!(
+            CFDTxRow,
+            r#"
+            SELECT card_id, occurred_at, to_column_id
+            FROM card_transitions
+            WHERE to_column_id = ANY($1)
+              AND occurred_at::date <= $2
+            ORDER BY card_id, occurred_at ASC
+            "#,
+            &column_ids,
+            to,
+        )
+        .fetch_all(pool)
+        .await?;
+
+        // For each date in range, determine card positions based on last transition before that date
+        let mut data_points = Vec::new();
+        let mut current_date = from;
+
+        while current_date <= to {
+            let mut counts: std::collections::HashMap<Uuid, i64> = std::collections::HashMap::new();
+            for col in &columns {
+                counts.insert(col.id, 0);
+            }
+
+            // For each card, find the latest transition before this date + 1
+            // to determine which column it was in on this date
+            let mut seen_cards: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
+
+            // Process transitions in reverse to find each card's latest position before current_date
+            for tx in transitions.iter().rev() {
+                let card_id = match tx.card_id {
+                    Some(id) => id,
+                    None => continue,
+                };
+                let col_id = match tx.to_column_id {
+                    Some(id) => id,
+                    None => continue,
+                };
+                let tx_date = match tx.occurred_at {
+                    Some(dt) => dt.date_naive(),
+                    None => continue,
+                };
+                if tx_date > current_date {
+                    continue;
+                }
+                if seen_cards.contains(&card_id) {
+                    continue;
+                }
+                seen_cards.insert(card_id);
+                *counts.entry(col_id).or_insert(0) += 1;
+            }
+
+            data_points.push(CFDPoint {
+                date: current_date,
+                counts,
+            });
+
+            current_date = match current_date.checked_add_signed(TimeDelta::days(1)) {
+                Some(d) => d,
+                None => break,
+            };
+        }
+
+        Ok(CFDResponse {
+            columns,
+            data_points,
+        })
+    }
+
+    /// Monte Carlo simulation for delivery forecasting.
+    pub async fn monte_carlo(
+        pool: &PgPool,
+        workspace_id: Uuid,
+        days: i32,
+        simulations: i32,
+    ) -> Result<MonteCarloResponse, crate::AppError> {
+        // Daily throughput: cards completed per day in the window
+        let rows = sqlx::query_as!(
+            ThroughputRow,
+            r#"
+            SELECT
+                DATE(ct.occurred_at) AS "date",
+                COUNT(*)::int8 AS "count"
+            FROM card_transitions ct
+            INNER JOIN columns col ON col.id = ct.to_column_id
+            WHERE col.workspace_id = $1
+              AND col.is_done = TRUE
+              AND ct.occurred_at >= NOW() - ($2::text || ' days')::INTERVAL
+            GROUP BY DATE(ct.occurred_at)
+            ORDER BY date ASC
+            "#,
+            workspace_id,
+            days.to_string(),
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let throughput_data: Vec<i64> = rows.iter().filter_map(|r| r.count).collect();
+
+        if throughput_data.is_empty() {
+            return Ok(MonteCarloResponse {
+                throughput_data: vec![],
+                simulations: MonteCarloSimulations {
+                    histogram: vec![],
+                    percentiles: MonteCarloPercentiles {
+                        p50: 0,
+                        p75: 0,
+                        p85: 0,
+                        p95: 0,
+                    },
+                    total_cards: 0,
+                },
+            });
+        }
+
+        // Count cards currently in active (non-done) columns (backlog to simulate)
+        let total_cards = sqlx::query_scalar!(
+            r#"
+            SELECT COUNT(*)::int8
+            FROM cards c
+            INNER JOIN columns col ON col.id = c.current_column_id
+            WHERE c.workspace_id = $1
+              AND c.deleted_at IS NULL
+              AND c.is_archived = FALSE
+              AND col.is_done = FALSE
+            "#,
+            workspace_id,
+        )
+        .fetch_one(pool)
+        .await?
+        .unwrap_or(0);
+
+        if total_cards == 0 {
+            return Ok(MonteCarloResponse {
+                throughput_data,
+                simulations: MonteCarloSimulations {
+                    histogram: vec![],
+                    percentiles: MonteCarloPercentiles {
+                        p50: 0,
+                        p75: 0,
+                        p85: 0,
+                        p95: 0,
+                    },
+                    total_cards: 0,
+                },
+            });
+        }
+
+        // Run Monte Carlo simulations
+        let mut rng = rand::thread_rng();
+        let results: Vec<i64> = (0..simulations)
+            .map(|_| {
+                let mut remaining = total_cards;
+                let mut elapsed = 0i64;
+                while remaining > 0 {
+                    let idx = rng.gen_range(0..throughput_data.len());
+                    let completed = throughput_data[idx];
+                    remaining -= completed;
+                    elapsed += 1;
+                }
+                elapsed
+            })
+            .collect();
+
+        // Build histogram
+        let max_days = *results.iter().max().unwrap_or(&1);
+        let min_days = *results.iter().min().unwrap_or(&0);
+        let mut histogram = Vec::new();
+
+        for day in min_days..=max_days {
+            let count = results.iter().filter(|&&r| r == day).count() as f64;
+            histogram.push(MonteCarloBin {
+                days: day,
+                probability: (count / simulations as f64 * 10000.0).round() / 100.0,
+            });
+        }
+
+        // Compute percentiles
+        let mut sorted = results.clone();
+        sorted.sort();
+
+        let p50 = Self::percentile_value(&sorted, 50.0);
+        let p75 = Self::percentile_value(&sorted, 75.0);
+        let p85 = Self::percentile_value(&sorted, 85.0);
+        let p95 = Self::percentile_value(&sorted, 95.0);
+
+        Ok(MonteCarloResponse {
+            throughput_data,
+            simulations: MonteCarloSimulations {
+                histogram,
+                percentiles: MonteCarloPercentiles { p50, p75, p85, p95 },
+                total_cards,
+            },
+        })
+    }
+
+    fn percentile_value(sorted: &[i64], p: f64) -> i64 {
+        if sorted.is_empty() {
+            return 0;
+        }
+        let idx = ((p / 100.0) * (sorted.len() as f64 - 1.0)).round() as usize;
+        sorted[idx.clamp(0, sorted.len() - 1)]
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct CFDTxRow {
+    card_id: Option<Uuid>,
+    occurred_at: Option<DateTime<Utc>>,
+    to_column_id: Option<Uuid>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+#[allow(dead_code)]
+struct ThroughputRow {
+    date: Option<NaiveDate>,
+    count: Option<i64>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct CFDColumnRow {
+    id: Uuid,
+    title: String,
+    is_done: bool,
 }
