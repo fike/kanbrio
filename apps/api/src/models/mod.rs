@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod audit;
 pub mod board;
 pub mod card;

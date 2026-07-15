@@ -1,0 +1,59 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                c.id AS card_id,\n                c.title,\n                fd.done_at AS completed_at,\n                (EXTRACT(EPOCH FROM (fd.done_at - c.created_at)) / 3600.0)::float8 AS cycle_time_hours,\n                c.assigned_user_id AS assignee_id,\n                u.name AS assignee_name,\n                sl.title AS swimlane\n            FROM cards c\n            INNER JOIN LATERAL (\n                SELECT ct.occurred_at AS done_at\n                FROM card_transitions ct\n                INNER JOIN columns col ON col.id = ct.to_column_id\n                WHERE ct.card_id = c.id\n                  AND col.is_done = TRUE\n                  AND col.workspace_id = $1\n                ORDER BY ct.occurred_at ASC\n                LIMIT 1\n            ) fd ON TRUE\n            LEFT JOIN users u ON u.id = c.assigned_user_id\n            LEFT JOIN swimlanes sl ON sl.id = c.current_swimlane_id\n            WHERE c.workspace_id = $1\n              AND c.deleted_at IS NULL\n              AND fd.done_at >= NOW() - ($2::text || ' days')::INTERVAL\n            ORDER BY fd.done_at ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "card_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "completed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "cycle_time_hours",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 4,
+        "name": "assignee_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "assignee_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "swimlane",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      null,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "cfb355e8bedcad68df9d11938c320ac0ff66138e691189e98707aa4890112ad5"
+}
