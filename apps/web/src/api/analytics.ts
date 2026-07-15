@@ -87,3 +87,75 @@ export const fetchAgingWip = async (
   if (!response.ok) throw new Error('Failed to fetch aging WIP');
   return response.json();
 };
+
+// --- CFD types ---
+
+export interface CFDColumn {
+  id: string;
+  title: string;
+  color: string;
+}
+
+export interface CFDPoint {
+  date: string;
+  counts: Record<string, number>;
+}
+
+export interface CFDResponse {
+  columns: CFDColumn[];
+  data_points: CFDPoint[];
+}
+
+// --- Monte Carlo types ---
+
+export interface MonteCarloBin {
+  days: number;
+  probability: number;
+}
+
+export interface MonteCarloPercentiles {
+  p50: number;
+  p75: number;
+  p85: number;
+  p95: number;
+}
+
+export interface MonteCarloSimulations {
+  histogram: MonteCarloBin[];
+  percentiles: MonteCarloPercentiles;
+  total_cards: number;
+}
+
+export interface MonteCarloResponse {
+  throughput_data: number[];
+  simulations: MonteCarloSimulations;
+}
+
+export const fetchCFD = async (
+  workspaceId: string,
+  from?: string,
+  to?: string
+): Promise<CFDResponse> => {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${workspaceId}/analytics/cfd?${params}`,
+    { credentials: 'include', signal: AbortSignal.timeout(5000) }
+  );
+  if (!response.ok) throw new Error('Failed to fetch CFD data');
+  return response.json();
+};
+
+export const fetchMonteCarlo = async (
+  workspaceId: string,
+  days = 90,
+  simulations = 1000
+): Promise<MonteCarloResponse> => {
+  const response = await fetch(
+    `${API_BASE_URL}/workspaces/${workspaceId}/analytics/monte-carlo?days=${days}&simulations=${simulations}`,
+    { credentials: 'include', signal: AbortSignal.timeout(5000) }
+  );
+  if (!response.ok) throw new Error('Failed to fetch Monte Carlo data');
+  return response.json();
+};
