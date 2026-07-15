@@ -9,6 +9,7 @@ import Board from './components/Board/Board';
 import ConnectionStatus from './components/ConnectionStatus';
 import { useWebSocket } from './hooks/useWebSocket';
 import { SettingsPage } from './components/Settings/SettingsPage';
+import { AnalyticsPage } from './components/Analytics/AnalyticsPage';
 
 export function WorkspaceLayout() {
   const auth = useAuth();
@@ -19,8 +20,6 @@ export function WorkspaceLayout() {
   // Connect WebSocket for real-time board events
   const workspaceId = params.workspace_id || '';
   const ws = useWebSocket(workspaceId);
-
-  const isOnSettings = () => location.pathname.endsWith('/settings');
 
   return (
     <ProtectedRoute>
@@ -37,15 +36,21 @@ export function WorkspaceLayout() {
             <a
               href={`/w/${workspaceId}`}
               class="px-2 py-1 rounded border border-base transition-colors"
-              classList={{ 'bg-elevated': !isOnSettings(), 'opacity-60 hover:bg-elevated': isOnSettings() }}
+              classList={{ 'bg-elevated': !location.pathname.includes('/settings') && !location.pathname.includes('/analytics'), 'opacity-60 hover:bg-elevated': location.pathname.includes('/settings') || location.pathname.includes('/analytics') }}
             >
               Board
             </a>
-            <span class="opacity-40">Analytics</span>
+            <a
+              href={`/w/${workspaceId}/analytics`}
+              class="px-2 py-1 rounded border border-transparent transition-colors"
+              classList={{ 'bg-elevated border-base': location.pathname.includes('/analytics'), 'opacity-60 hover:bg-elevated': !location.pathname.includes('/analytics') }}
+            >
+              Analytics
+            </a>
             <a
               href={`/w/${workspaceId}/settings`}
               class="px-2 py-1 rounded border border-transparent transition-colors"
-              classList={{ 'bg-elevated border-base': isOnSettings(), 'opacity-60 hover:bg-elevated': !isOnSettings() }}
+              classList={{ 'bg-elevated border-base': location.pathname.includes('/settings'), 'opacity-60 hover:bg-elevated': !location.pathname.includes('/settings') }}
             >
               Settings
             </a>
@@ -71,12 +76,15 @@ export function WorkspaceLayout() {
             <WorkspaceSelector />
           </aside>
 
-          {/* Content (Board or Settings) */}
+          {/* Content (Board, Analytics, or Settings) */}
           <main class="flex-1 overflow-hidden">
-            <Show when={isOnSettings()}>
+            <Show when={location.pathname.includes('/settings')}>
               <SettingsPage workspaceId={params.workspace_id || ''} />
             </Show>
-            <Show when={!isOnSettings()}>
+            <Show when={location.pathname.includes('/analytics')}>
+              <AnalyticsPage workspaceId={params.workspace_id || ''} />
+            </Show>
+            <Show when={!location.pathname.includes('/settings') && !location.pathname.includes('/analytics')}>
               <Board workspaceId={params.workspace_id || ''} />
             </Show>
           </main>
@@ -148,6 +156,7 @@ export const AppRoutes = () => (
     <Route path="/register" component={Register} />
     <Route path="/w/:workspace_id" component={WorkspaceLayout} />
     <Route path="/w/:workspace_id/settings" component={WorkspaceLayout} />
+    <Route path="/w/:workspace_id/analytics" component={WorkspaceLayout} />
     <Route path="/" component={IntelligentRedirect} />
     <Route path="*path" component={IntelligentRedirect} />
   </>
