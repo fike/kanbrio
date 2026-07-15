@@ -10,7 +10,9 @@ pub use config::{Feature, FeatureFlags};
 pub use error::AppError;
 pub use websocket::WorkspaceHub;
 
-use crate::handlers::analytics::{get_aging_wip, get_cycle_times, get_flow_efficiency};
+use crate::handlers::analytics::{
+    get_aging_wip, get_cfd, get_cycle_times, get_flow_efficiency, get_monte_carlo,
+};
 use crate::handlers::auth::{
     create_workspace, login, logout, me, oauth_callback, oauth_redirect, register, workspaces,
 };
@@ -166,6 +168,11 @@ pub fn create_app(pool: sqlx::PgPool) -> Router {
         .route(
             "/api/workspaces/:workspace_id/analytics/aging-wip",
             get(get_aging_wip),
+        )
+        .route("/api/workspaces/:workspace_id/analytics/cfd", get(get_cfd))
+        .route(
+            "/api/workspaces/:workspace_id/analytics/monte-carlo",
+            get(get_monte_carlo),
         )
         // WebSocket endpoint
         .route("/ws/workspaces/:workspace_id", get(ws_upgrade))

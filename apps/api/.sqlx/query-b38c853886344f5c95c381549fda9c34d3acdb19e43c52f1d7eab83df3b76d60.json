@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                DATE(ct.occurred_at) AS \"date\",\n                COUNT(*)::int8 AS \"count\"\n            FROM card_transitions ct\n            INNER JOIN columns col ON col.id = ct.to_column_id\n            WHERE col.workspace_id = $1\n              AND col.is_done = TRUE\n              AND ct.occurred_at >= NOW() - ($2::text || ' days')::INTERVAL\n            GROUP BY DATE(ct.occurred_at)\n            ORDER BY date ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 1,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "b38c853886344f5c95c381549fda9c34d3acdb19e43c52f1d7eab83df3b76d60"
+}
