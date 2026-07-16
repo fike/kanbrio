@@ -7,6 +7,7 @@ import { Register } from './components/Register/Register';
 import { WorkspaceSelector } from './components/WorkspaceSelector/WorkspaceSelector';
 import Board from './components/Board/Board';
 import ConnectionStatus from './components/ConnectionStatus';
+import CollaborationToast from './components/CollaborationToast';
 import { useWebSocket } from './hooks/useWebSocket';
 import { SettingsPage } from './components/Settings/SettingsPage';
 import { AnalyticsPage } from './components/Analytics/AnalyticsPage';
@@ -92,6 +93,9 @@ export function WorkspaceLayout() {
 
         {/* Real-time connection status indicator */}
         <ConnectionStatus status={ws.status} reconnectCount={ws.reconnectCount} />
+
+        {/* Real-time collaboration toast notifications */}
+        <CollaborationToast />
       </div>
     </ProtectedRoute>
   );
