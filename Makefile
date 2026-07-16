@@ -3,8 +3,9 @@
 # Docker Compose CLI (v2 — space, not hyphen)
 COMPOSE := docker compose
 
-# PostgreSQL connection (override via .env or shell)
-export DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/$(POSTGRES_DB)
+# Export DATABASE_URL for SQLx compile-time validation (reads from .env)
+-include .env
+export DATABASE_URL := $(DATABASE_URL)
 
 .PHONY: all setup test clean docker-up docker-down docker-logs \
         compose compose-down compose-test compose-logs compose-observability
@@ -19,7 +20,7 @@ setup:
 	$(COMPOSE) up -d --build postgres
 	@echo "Waiting for PostgreSQL to be ready..."
 	@sleep 5
-	@cd apps/api && cargo test -- --test-threads=1 || true
+	@cd apps/api && cargo test || true
 	@echo "Setup complete."
 
 # ── Legacy Docker targets (deprecated — use compose-* instead) ───────
