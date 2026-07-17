@@ -231,6 +231,70 @@ test.describe('Business Rules Settings E2E', () => {
     await expect(page.locator('[data-testid="create-rule-error"]')).toContainText('already exists');
   });
 
+  test('should edit an existing rule', async ({ page }) => {
+    let rules: unknown[] = [
+      {
+        id: RULE_ID,
+        workspace_id: WORKSPACE_ID,
+        name: 'Original Name',
+        trigger_type: 'child_status_changed',
+        trigger_config: {},
+        action_type: 'move_parent_card',
+        action_config: { done_column_id: COL_DONE, in_progress_column_id: COL_DOING },
+        is_active: true,
+        created_at: '2026-07-12T00:00:00Z',
+        updated_at: '2026-07-12T00:00:00Z',
+      },
+    ];
+
+    await page.route(`**/api/workspaces/${WORKSPACE_ID}/rules`, async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(rules),
+        });
+      } else {
+        await route.fulfill({ status: 405 });
+      }
+    });
+
+    await page.route(`**/api/workspaces/${WORKSPACE_ID}/rules/${RULE_ID}`, async (route) => {
+      if (route.request().method() === 'PATCH') {
+        const body = JSON.parse(route.request().postData() || '{}');
+        const updated = { ...rules[0] as Record<string, unknown>, ...body, updated_at: new Date().toISOString() };
+        rules = [updated];
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(rules[0]),
+        });
+      } else {
+        await route.fulfill({ status: 405 });
+      }
+    });
+
+    await page.goto(`/w/${WORKSPACE_ID}/settings`);
+    await expect(page.locator('text=Original Name')).toBeVisible();
+
+    // Click edit button
+    await page.locator(`[data-testid="rule-edit-${RULE_ID}"]`).click();
+    await expect(page.locator('[data-testid="create-rule-dialog"]')).toBeVisible();
+    await expect(page.locator('text=Edit Rule')).toBeVisible();
+
+    // Verify pre-filled fields
+    const nameInput = page.locator('[data-testid="rule-name-input"]');
+    await expect(nameInput).toHaveValue('Original Name');
+
+    // Update the name
+    await nameInput.fill('Updated Name');
+    await page.locator('[data-testid="create-rule-submit"]').click();
+
+    // Verify update and dialog closed
+    await expect(page.locator('[data-testid="create-rule-dialog"]')).not.toBeVisible();
+    await expect(page.locator('text=Updated Name')).toBeVisible();
+  });
+
   test('should enforce focus trap and escape key in create rule modal', async ({ page }) => {
     await page.route(`**/api/workspaces/${WORKSPACE_ID}/rules`, async (route) => {
       await route.fulfill({
