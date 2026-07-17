@@ -10,6 +10,7 @@ interface RulesListProps {
   togglingId: string | null;
   onToggle: (rule: BusinessRule) => void;
   onDelete: (rule: BusinessRule) => void;
+  onEdit: (rule: BusinessRule) => void;
   onCreateClick: () => void;
 }
 
@@ -80,6 +81,7 @@ export function RulesList(props: RulesListProps) {
                   rule={rule}
                   onToggle={props.onToggle}
                   onDelete={props.onDelete}
+                  onEdit={props.onEdit}
                   toggling={props.togglingId === rule.id}
                 />
               )}
