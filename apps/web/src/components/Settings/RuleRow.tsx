@@ -1,5 +1,5 @@
 import type { BusinessRule } from '../../api/rules';
-import { Trash2 } from 'lucide-solid';
+import { Trash2, Pencil } from 'lucide-solid';
 
 const TRIGGER_LABELS: Record<string, string> = {
   child_status_changed: 'Child status changed',
@@ -15,6 +15,7 @@ interface RuleRowProps {
   rule: BusinessRule;
   onToggle: (rule: BusinessRule) => void;
   onDelete: (rule: BusinessRule) => void;
+  onEdit: (rule: BusinessRule) => void;
   toggling: boolean;
 }
 
@@ -51,6 +52,16 @@ export function RuleRow(props: RuleRowProps) {
           class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200"
           classList={{ 'translate-x-4': props.rule.is_active }}
         />
+      </button>
+
+      <button
+        type="button"
+        data-testid={`rule-edit-${props.rule.id}`}
+        onClick={() => props.onEdit(props.rule)}
+        class="p-1.5 text-tertiary hover:text-accent-primary rounded-md hover:bg-accent-primary/10 transition-colors focus:ring-2 focus:ring-accent-primary focus:outline-none"
+        aria-label={`Edit rule ${props.rule.name}`}
+      >
+        <Pencil class="w-4 h-4" />
       </button>
 
       <button

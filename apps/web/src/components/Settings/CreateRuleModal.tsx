@@ -1,6 +1,7 @@
 import { createSignal, For, onMount, Show } from 'solid-js';
 import { createQuery } from '@tanstack/solid-query';
-import { createRule, fetchWorkspaceMembers } from '../../api/rules';
+import { createRule, updateRule, fetchWorkspaceMembers } from '../../api/rules';
+import type { BusinessRule } from '../../api/rules';
 import { fetchBoardState } from '../../api/board';
 import { X } from 'lucide-solid';
 
@@ -8,6 +9,7 @@ interface CreateRuleModalProps {
   workspaceId: string;
   onClose: () => void;
   onCreated: () => void;
+  editRule?: BusinessRule;
 }
 
 const TRIGGER_OPTIONS = [
@@ -24,14 +26,29 @@ export function CreateRuleModal(props: CreateRuleModalProps) {
   let dialogRef: HTMLDivElement | undefined;
   let nameInputRef: HTMLInputElement | undefined;
 
-  const [name, setName] = createSignal('');
-  const [triggerType, setTriggerType] = createSignal('child_status_changed');
-  const [actionType, setActionType] = createSignal('move_parent_card');
-  const [triggerColumnId, setTriggerColumnId] = createSignal('');
-  const [doneColumnId, setDoneColumnId] = createSignal('');
-  const [inProgressColumnId, setInProgressColumnId] = createSignal('');
-  const [assignedUserId, setAssignedUserId] = createSignal('');
-  const [clearAssignee, setClearAssignee] = createSignal(false);
+  const isEditing = () => !!props.editRule;
+  const editData = () => props.editRule;
+
+  const [name, setName] = createSignal(editData()?.name || '');
+  const [triggerType, setTriggerType] = createSignal<'child_status_changed' | 'card_entered_column'>(
+    (editData()?.trigger_type as 'child_status_changed' | 'card_entered_column') || 'child_status_changed'
+  );
+  const [actionType, setActionType] = createSignal<'move_parent_card' | 'assign_card'>(
+    (editData()?.action_type as 'move_parent_card' | 'assign_card') || 'move_parent_card'
+  );
+  const [triggerColumnId, setTriggerColumnId] = createSignal(
+    typeof editData()?.trigger_config?.column_id === 'string' ? editData()!.trigger_config.column_id as string : ''
+  );
+  const [doneColumnId, setDoneColumnId] = createSignal(
+    typeof editData()?.action_config?.done_column_id === 'string' ? editData()!.action_config.done_column_id as string : ''
+  );
+  const [inProgressColumnId, setInProgressColumnId] = createSignal(
+    typeof editData()?.action_config?.in_progress_column_id === 'string' ? editData()!.action_config.in_progress_column_id as string : ''
+  );
+  const [assignedUserId, setAssignedUserId] = createSignal(
+    typeof editData()?.action_config?.assigned_user_id === 'string' ? editData()!.action_config.assigned_user_id as string : ''
+  );
+  const [clearAssignee, setClearAssignee] = createSignal(editData()?.action_config?.clear_assignee === true);
   const [error, setError] = createSignal<string | null>(null);
   const [submitting, setSubmitting] = createSignal(false);
 
@@ -127,16 +144,21 @@ export function CreateRuleModal(props: CreateRuleModalProps) {
     }
 
     try {
-      await createRule(props.workspaceId, {
+      const payload = {
         name: name().trim(),
         trigger_type: triggerType(),
         trigger_config: triggerConfig,
         action_type: actionType(),
         action_config: actionConfig,
-      });
+      };
+      if (isEditing()) {
+        await updateRule(props.workspaceId, editData()!.id, payload);
+      } else {
+        await createRule(props.workspaceId, payload);
+      }
       props.onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create rule');
+      setError(err instanceof Error ? err.message : 'Failed to save rule');
     } finally {
       setSubmitting(false);
     }
@@ -163,7 +185,7 @@ export function CreateRuleModal(props: CreateRuleModalProps) {
         {/* Header */}
         <div class="flex items-center justify-between">
           <h2 id="create-rule-title" class="text-lg font-semibold tracking-tight text-primary">
-            Create Rule
+            {isEditing() ? 'Edit Rule' : 'Create Rule'}
           </h2>
           <button
             type="button"
@@ -216,7 +238,7 @@ export function CreateRuleModal(props: CreateRuleModalProps) {
             <select
               id="trigger-type"
               value={triggerType()}
-              onChange={(e) => setTriggerType(e.currentTarget.value)}
+              onChange={(e) => setTriggerType(e.currentTarget.value as 'child_status_changed' | 'card_entered_column')}
               disabled={submitting()}
               class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all text-primary disabled:opacity-60 disabled:cursor-not-allowed"
               data-testid="trigger-type-select"
@@ -264,7 +286,7 @@ export function CreateRuleModal(props: CreateRuleModalProps) {
             <select
               id="action-type"
               value={actionType()}
-              onChange={(e) => setActionType(e.currentTarget.value)}
+              onChange={(e) => setActionType(e.currentTarget.value as 'move_parent_card' | 'assign_card')}
               disabled={submitting()}
               class="w-full px-3 py-2 text-sm bg-surface border border-base rounded-md focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 focus:outline-none transition-all text-primary disabled:opacity-60 disabled:cursor-not-allowed"
               data-testid="action-type-select"
@@ -394,11 +416,11 @@ export function CreateRuleModal(props: CreateRuleModalProps) {
               fallback={
                 <>
                   <span class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  Creating...
+                  {isEditing() ? 'Saving...' : 'Creating...'}
                 </>
               }
             >
-              Create Rule
+              {isEditing() ? 'Save Changes' : 'Create Rule'}
             </Show>
           </button>
         </div>

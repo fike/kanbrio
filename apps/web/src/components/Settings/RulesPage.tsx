@@ -13,6 +13,7 @@ interface RulesPageProps {
 export function RulesPage(props: RulesPageProps) {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = createSignal(false);
+  const [editingRule, setEditingRule] = createSignal<BusinessRule | null>(null);
   const [confirmDelete, setConfirmDelete] = createSignal<BusinessRule | null>(null);
 
   const rulesQuery = createQuery(() => ({
@@ -35,6 +36,11 @@ export function RulesPage(props: RulesPageProps) {
       queryClient.invalidateQueries({ queryKey: ['rules', props.workspaceId] });
     },
   }));
+
+  const handleEdit = (rule: BusinessRule) => {
+    setEditingRule(rule);
+    setShowCreateModal(true);
+  };
 
   const handleToggle = (rule: BusinessRule) => {
     toggleMutation.mutate({ rule, is_active: !rule.is_active });
@@ -114,15 +120,24 @@ export function RulesPage(props: RulesPageProps) {
         togglingId={null}
         onToggle={handleToggle}
         onDelete={handleDelete}
-        onCreateClick={() => setShowCreateModal(true)}
+        onEdit={handleEdit}
+        onCreateClick={() => {
+          setEditingRule(null);
+          setShowCreateModal(true);
+        }}
       />
 
       <Show when={showCreateModal()}>
         <CreateRuleModal
           workspaceId={props.workspaceId}
-          onClose={() => setShowCreateModal(false)}
+          editRule={editingRule() || undefined}
+          onClose={() => {
+            setShowCreateModal(false);
+            setEditingRule(null);
+          }}
           onCreated={() => {
             setShowCreateModal(false);
+            setEditingRule(null);
             queryClient.invalidateQueries({ queryKey: ['rules', props.workspaceId] });
           }}
         />
