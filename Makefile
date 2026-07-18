@@ -8,7 +8,8 @@ COMPOSE := docker compose
 export DATABASE_URL := $(DATABASE_URL)
 
 .PHONY: all setup test clean docker-up docker-down docker-logs \
-        compose compose-down compose-test compose-logs compose-observability
+        compose compose-down compose-test compose-logs compose-observability \
+        build seed demo
 
 all: setup
 
@@ -67,6 +68,16 @@ test-workspace:
 
 build:
 	cd apps/api && cargo build --release
+
+# ── Database Seed ────────────────────────────────────────────────────
+
+seed:
+	@echo "Running seed data..."
+	$(COMPOSE) exec -T postgres psql -U postgres -d kanbrio < scripts/seed.sql
+
+demo:
+	@echo "Running full demo data (resets all tables)..."
+	$(COMPOSE) exec -T postgres psql -U postgres -d kanbrio < scripts/demo.sql
 
 # ── Clean ────────────────────────────────────────────────────────────
 
