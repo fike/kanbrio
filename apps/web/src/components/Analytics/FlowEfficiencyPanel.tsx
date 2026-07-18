@@ -1,4 +1,4 @@
-import { For, onMount, Show } from 'solid-js';
+import { createEffect, For, onMount, Show } from 'solid-js';
 import { Chart, registerables } from 'chart.js';
 import type { FlowEfficiencyResponse } from '../../api/analytics';
 
@@ -48,6 +48,10 @@ export function FlowEfficiencyPanel(props: FlowEfficiencyPanelProps) {
   };
 
   onMount(() => {
+    renderChart();
+  });
+
+  createEffect(() => {
     renderChart();
   });
 

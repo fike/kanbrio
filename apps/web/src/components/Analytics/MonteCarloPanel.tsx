@@ -1,4 +1,4 @@
-import { onMount, Show } from 'solid-js';
+import { createEffect, onMount, Show } from 'solid-js';
 import { Chart, registerables } from 'chart.js';
 import type { MonteCarloResponse } from '../../api/analytics';
 
@@ -78,6 +78,10 @@ export function MonteCarloPanel(props: MonteCarloPanelProps) {
   };
 
   onMount(() => {
+    renderChart();
+  });
+
+  createEffect(() => {
     renderChart();
   });
 

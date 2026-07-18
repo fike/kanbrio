@@ -1,4 +1,4 @@
-import { onMount, Show } from 'solid-js';
+import { createEffect, onMount, Show } from 'solid-js';
 import { Chart, registerables } from 'chart.js';
 import type { CycleTimePoint, Percentiles } from '../../api/analytics';
 
@@ -134,6 +134,10 @@ export function CycleTimePanel(props: CycleTimePanelProps) {
   };
 
   onMount(() => {
+    renderChart();
+  });
+
+  createEffect(() => {
     renderChart();
   });
 
