@@ -13,12 +13,12 @@ services:
     volumes:
       - ./apps/api/src:/app/src:ro
     environment:
-      RUST_LOG: debug
+      RUST_LOG: "info,tower_http=debug,h2=warn,hyper=warn"
 
   web:
-    # Vite HMR needs WebSocket — ensure hot-reload works
     environment:
       CHOKIDAR_USEPOLLING: "true"
+      API_URL: http://kanbrio-api:3000
 
   # ── Observability (only start if explicitly requested) ──────────────
   # To include observability in dev, run:
