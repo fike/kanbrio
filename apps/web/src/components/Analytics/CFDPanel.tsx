@@ -1,4 +1,4 @@
-import { onMount, Show } from 'solid-js';
+import { createEffect, onMount, Show } from 'solid-js';
 import { Chart, registerables } from 'chart.js';
 import type { CFDResponse } from '../../api/analytics';
 
@@ -68,6 +68,10 @@ export function CFDPanel(props: CFDPanelProps) {
   };
 
   onMount(() => {
+    renderChart();
+  });
+
+  createEffect(() => {
     renderChart();
   });
 
