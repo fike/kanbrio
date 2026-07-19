@@ -33,4 +33,4 @@ Kanbrio is a monorepo:
 - `apps/web`: SolidJS frontend.
 - `docs/adr`: Architectural Decision Records.
 
-See [ORGANIZATION.md](./ORGANIZATION.md) for more details.
+See [docs/organization/organization.md](./docs/organization/organization.md) for more details.

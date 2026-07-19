@@ -1,7 +1,7 @@
 # ADR 003: Data Core Design (Hierarchy & Event Logging)
 
 **Date**: 2026-05-22
-**Status**: Proposed
+**Status**: Accepted
 **Owner**: @architect
 
 ## Context

@@ -1,7 +1,7 @@
 # ADR 005: Arrival & Departure Rules (Checklists & Column Policies)
 
 **Date**: 2026-05-29
-**Status**: Proposed
+**Status**: Accepted
 **Owner**: @architect
 
 ## Context

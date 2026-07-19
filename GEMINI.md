@@ -15,9 +15,9 @@ This project follows a strict **Agent-First** development model. All development
 
 ## 📂 Architecture & Context
 - **ADRs:** Consult `docs/adr/` before making architectural decisions.
-- **Project Structure:** Adhere to the monorepo layout described in [ORGANIZATION.md](./ORGANIZATION.md).
-- **Discovery:** Refer to [DISCOVERY.md](./DISCOVERY.md) for current product research and [ROADMAP.md](./ROADMAP.md) for priorities.
+- **Project Structure:** Adhere to the monorepo layout described in [docs/organization/organization.md](./docs/organization/organization.md).
 
+- **Discovery:** Refer to [docs/product/discovery.md](./docs/product/discovery.md) for current product research and [docs/product/roadmap.md](./docs/product/roadmap.md) for priorities.
 ## 🚦 Quality Gates
 No code shall be merged without clearing the following AI audits:
 1. **Security Review** (@security)
