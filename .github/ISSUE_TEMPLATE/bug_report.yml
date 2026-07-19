@@ -1,0 +1,83 @@
+name: Bug Report
+description: Report a reproducible defect in Kanbrio.
+labels: ["bug", "status: needs-triage"]
+assignees: []
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+        Per `AGENTS.md`, please write in English only.
+        Please search existing issues before submitting a duplicate.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Reproduction steps
+      description: Minimal step-by-step instructions for reproducing the defect.
+      placeholder: |
+        1. Run `make compose`
+        2. Open http://localhost:5173/w/<id>
+        3. Drag card X to column Y
+        4. Observe the error toast "..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened. Include error messages, stack traces, or screenshot/GIF if useful.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How badly does this affect normal usage?
+      options:
+        - "Blocker — prevents core work"
+        - "High — major feature broken"
+        - "Medium — feature degraded with workaround"
+        - "Low — cosmetic or rare edge case"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Kanbrio version / commit SHA
+      placeholder: "v0.1.0 or commit SHA (run `git rev-parse HEAD`)"
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, browser, Docker version, or anything else about your environment that might be relevant.
+      placeholder: |
+        - OS: macOS 14 / Linux / Windows 11
+        - Browser: Firefox 134, Safari 18
+        - Docker: Docker Desktop 4.34
+        - Postgres: 16-alpine via `make compose`
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues for a similar report.
+          required: true
+        - label: I can reproduce this on `main` HEAD (or the latest tagged release).
+          required: true
+        - label: This is not a security vulnerability (those belong in `.github/SECURITY.md`).
+          required: true

@@ -2,7 +2,7 @@
 name: Feature Request
 about: Propose a new feature following the Agentic Workflow.
 title: "[Feature] "
-labels: "type: feature, status: needs-pm-review"
+labels: "type: feature, status: needs-triage"
 assignees: ""
 ---
 
@@ -14,5 +14,5 @@ assignees: ""
 
 **Acceptance Criteria (AC):**
 <!-- Mandatory. The @developer agent cannot start until these are clear and approved by @product-manager. -->
-- [ ] 
-- [ ] 
+- [ ]
+- [ ]

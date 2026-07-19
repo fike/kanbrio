@@ -1,0 +1,17 @@
+# .github/ISSUE_TEMPLATE/config.yml
+#
+# Issue template chooser presented when a contributor opens
+# a new issue via the GitHub web UI. Per AGENTS.md, all
+# communications must be in English; the labels here align
+# with the Kanbrio taxonomy declared in ORGANIZATION.md.
+#
+# Reference: https://docs.github.com/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository#configuring-the-template-chooser
+
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: https://github.com/fike/kanbrio/security/advisories/new
+    about: Report security-sensitive defects through GitHub's private vulnerability reporting channel. See .github/SECURITY.md for SLA and scope.
+  - name: Discussions & product questions
+    url: https://github.com/fike/kanbrio/discussions
+    about: For product discovery questions, design feedback, and open-ended discussion, please use GitHub Discussions instead of opening an issue.
