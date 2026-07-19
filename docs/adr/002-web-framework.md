@@ -1,7 +1,7 @@
 # ADR 002: Web Framework Selection (Axum)
 
 **Date**: 2026-05-22
-**Status**: Proposed
+**Status**: Accepted
 **Owner**: @architect
 
 ## Context
