@@ -1,0 +1,42 @@
+# CODEOWNERS — root
+# Reviewers automatically assigned to every PR that touches these paths.
+# One path per line; @handle or @team for reviewers.
+# Format spec: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for the whole repo
+*                           @fike
+
+# Backend (Rust + Axum + SQLx)
+apps/api/                   @fike
+apps/api/migrations/        @fike
+apps/api/tests/             @fike
+
+# Frontend (SolidJS + Vite)
+apps/web/                   @fike
+apps/web/src/               @fike
+
+# End-to-end (Playwright)
+apps/e2e/                   @fike
+
+# Shared packages
+packages/                   @fike
+
+# Documentation
+docs/                       @fike
+docs/adr/                   @fike
+docs/product/               @fike
+docs/architecture/          @fike
+docs/processes/             @fike
+
+# Governance and CI
+.github/                    @fike
+CODE_OF_CONDUCT.md          @fike
+CONTRIBUTING.md             @fike
+SECURITY.md                 @fike
+
+# Design system
+DESIGN.md                   @fike
+
+# Issue tracker and backlog metadata
+.beads/                     @fike
+AGENTS.md                   @fike
