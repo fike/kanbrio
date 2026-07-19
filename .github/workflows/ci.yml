@@ -103,8 +103,8 @@ jobs:
       - name: Run cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check
-          arguments: bans licenses sources --manifest-path apps/api/Cargo.toml
+          command: check bans licenses sources
+          arguments: --manifest-path apps/api/Cargo.toml
           rust-version: stable
 
   cargo-audit:
