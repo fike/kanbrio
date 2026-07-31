@@ -465,42 +465,67 @@ impl BoardAnalytics {
         .fetch_all(pool)
         .await?;
 
-        // For each date in range, determine card positions based on last transition before that date
+        // Build a map of date -> transitions for efficient lookup
+        let mut transitions_by_date: std::collections::HashMap<NaiveDate, Vec<&CFDTxRow>> =
+            std::collections::HashMap::new();
+        for tx in &transitions {
+            let tx_date = match tx.occurred_at {
+                Some(dt) => dt.date_naive(),
+                None => continue,
+            };
+            if tx_date >= from && tx_date <= to {
+                transitions_by_date
+                    .entry(tx_date)
+                    .or_default()
+                    .push(tx);
+            }
+        }
+
+        // For each date in range, carry forward previous state and apply new transitions
         let mut data_points = Vec::new();
         let mut current_date = from;
+        // Track each card's current column position
+        let mut card_columns: std::collections::HashMap<Uuid, Uuid> =
+            std::collections::HashMap::new();
+        // Track column counts (derived from card_columns)
+        let mut column_counts: std::collections::HashMap<Uuid, i64> =
+            std::collections::HashMap::new();
+        for col in &columns {
+            column_counts.insert(col.id, 0);
+        }
 
         while current_date <= to {
-            let mut counts: std::collections::HashMap<Uuid, i64> = std::collections::HashMap::new();
-            for col in &columns {
-                counts.insert(col.id, 0);
+            // Apply new transitions that happened on this date
+            if let Some(day_transitions) = transitions_by_date.get(&current_date) {
+                let mut seen_cards: std::collections::HashSet<Uuid> =
+                    std::collections::HashSet::new();
+                for tx in day_transitions {
+                    let card_id = match tx.card_id {
+                        Some(id) => id,
+                        None => continue,
+                    };
+                    let col_id = match tx.to_column_id {
+                        Some(id) => id,
+                        None => continue,
+                    };
+                    if seen_cards.contains(&card_id) {
+                        continue;
+                    }
+                    seen_cards.insert(card_id);
+                    // Decrement old column if card was already tracked
+                    if let Some(old_col_id) = card_columns.insert(card_id, col_id)
+                        && let Some(count) = column_counts.get_mut(&old_col_id)
+                    {
+                        *count -= 1;
+                    }
+                    *column_counts.entry(col_id).or_insert(0) += 1;
+                }
             }
 
-            // For each card, find the latest transition before this date + 1
-            // to determine which column it was in on this date
-            let mut seen_cards: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
-
-            // Process transitions in reverse to find each card's latest position before current_date
-            for tx in transitions.iter().rev() {
-                let card_id = match tx.card_id {
-                    Some(id) => id,
-                    None => continue,
-                };
-                let col_id = match tx.to_column_id {
-                    Some(id) => id,
-                    None => continue,
-                };
-                let tx_date = match tx.occurred_at {
-                    Some(dt) => dt.date_naive(),
-                    None => continue,
-                };
-                if tx_date > current_date {
-                    continue;
-                }
-                if seen_cards.contains(&card_id) {
-                    continue;
-                }
-                seen_cards.insert(card_id);
-                *counts.entry(col_id).or_insert(0) += 1;
+            // Clone counts for this data point
+            let mut counts = std::collections::HashMap::new();
+            for col in &columns {
+                counts.insert(col.id, *column_counts.get(&col.id).unwrap_or(&0));
             }
 
             data_points.push(CFDPoint {
