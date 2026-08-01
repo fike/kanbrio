@@ -52,3 +52,6 @@ Thumbs.db
 apps/e2e/playwright-report/
 apps/e2e/test-results/
 test-results/
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/

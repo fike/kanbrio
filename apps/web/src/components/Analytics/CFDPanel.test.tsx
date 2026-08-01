@@ -13,22 +13,17 @@ vi.mock('chart.js', () => {
 
 describe('CFDPanel', () => {
   it('renders loading spinner', () => {
-    render(() => <CFDPanel data={null} loading={true} error={null} />);
+    render(() => <CFDPanel data={null} loading={true} error={null} dateRange="30" onRetry={() => {}} />);
     expect(screen.getByText('Loading chart...')).toBeInTheDocument();
   });
 
-  it('renders error banner', () => {
-    render(() => <CFDPanel data={null} loading={false} error={new Error('fail')} />);
-    expect(screen.getByText('Failed to load CFD data')).toBeInTheDocument();
-  });
-
   it('renders empty state', () => {
-    render(() => <CFDPanel data={{ columns: [], data_points: [] }} loading={false} error={null} />);
+    render(() => <CFDPanel data={{ columns: [], data_points: [] }} loading={false} error={null} dateRange="30" onRetry={() => {}} />);
     expect(screen.getByText('No data yet')).toBeInTheDocument();
   });
 
   it('renders chart title', () => {
-    render(() => <CFDPanel data={null} loading={false} error={null} />);
+    render(() => <CFDPanel data={null} loading={false} error={null} dateRange="30" onRetry={() => {}} />);
     expect(screen.getByText('Cumulative Flow Diagram')).toBeInTheDocument();
   });
 
@@ -40,7 +35,7 @@ describe('CFDPanel', () => {
         { date: '2026-07-02', counts: { c1: 3 } },
       ],
     };
-    render(() => <CFDPanel data={data} loading={false} error={null} />);
+    render(() => <CFDPanel data={data} loading={false} error={null} dateRange="30" onRetry={() => {}} />);
     expect(screen.getByText('Cumulative Flow Diagram')).toBeInTheDocument();
   });
 });

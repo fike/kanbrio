@@ -30,16 +30,22 @@ export function AnalyticsPage(props: AnalyticsPageProps) {
   const [threshold, setThreshold] = createSignal(3);
   const [cfdRange, setCfdRange] = createSignal(30);
   const [mcDays, setMcDays] = createSignal(90);
+  const [cfdCustomFrom, setCfdCustomFrom] = createSignal<string | undefined>();
+  const [cfdCustomTo, setCfdCustomTo] = createSignal<string | undefined>();
+  const [cfdUseCustomDate, setCfdUseCustomDate] = createSignal(false);
 
   const today = () => new Date().toISOString().split('T')[0];
   const fromDate = () => {
+    if (cfdUseCustomDate() && cfdCustomFrom()) {
+      return cfdCustomFrom()!;
+    }
     const d = new Date();
     d.setDate(d.getDate() - cfdRange());
     return d.toISOString().split('T')[0];
   };
 
   const cfdQuery = createQuery(() => ({
-    queryKey: ['cfd', props.workspaceId, cfdRange()],
+    queryKey: ['cfd', props.workspaceId, cfdRange(), cfdCustomFrom(), cfdCustomTo(), cfdUseCustomDate()],
     queryFn: () => fetchCFD(props.workspaceId, fromDate(), today()),
   }));
 
@@ -93,23 +99,66 @@ export function AnalyticsPage(props: AnalyticsPageProps) {
       </div>
 
       <Show when={activeTab() === 'cfd'}>
-        <div class="flex items-center gap-2 mb-2">
-          {[7, 30, 90].map((d) => (
+        <div class="flex flex-col gap-2" role="tabpanel" aria-labelledby="tab-cfd" data-testid="tabpanel-cfd">
+          <div class="flex items-center gap-2 mb-2">
             <button
               class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
-              classList={{ 'bg-accent-primary text-white': cfdRange() === d, 'bg-surface border border-base text-secondary hover:bg-elevated': cfdRange() !== d }}
-              onClick={() => setCfdRange(d)}
-              data-testid={`date-${d}d`}
+              classList={{ 'bg-accent-primary text-white': !cfdUseCustomDate() && cfdRange() === 7, 'bg-surface border border-base text-secondary hover:bg-elevated': (!cfdUseCustomDate() && cfdRange() !== 7) || cfdUseCustomDate() }}
+              onClick={() => { setCfdUseCustomDate(false); setCfdRange(7); }}
+              data-testid="date-7d"
             >
-              {d}d
+              7d
             </button>
-          ))}
+            <button
+              class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+              classList={{ 'bg-accent-primary text-white': !cfdUseCustomDate() && cfdRange() === 30, 'bg-surface border border-base text-secondary hover:bg-elevated': (!cfdUseCustomDate() && cfdRange() !== 30) || cfdUseCustomDate() }}
+              onClick={() => { setCfdUseCustomDate(false); setCfdRange(30); }}
+              data-testid="date-30d"
+            >
+              30d
+            </button>
+            <button
+              class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+              classList={{ 'bg-accent-primary text-white': !cfdUseCustomDate() && cfdRange() === 90, 'bg-surface border border-base text-secondary hover:bg-elevated': (!cfdUseCustomDate() && cfdRange() !== 90) || cfdUseCustomDate() }}
+              onClick={() => { setCfdUseCustomDate(false); setCfdRange(90); }}
+              data-testid="date-90d"
+            >
+              90d
+            </button>
+            <button
+              class="px-3 py-1 text-xs font-medium rounded-md transition-colors"
+              classList={{ 'bg-accent-primary text-white': cfdUseCustomDate(), 'bg-surface border border-base text-secondary hover:bg-elevated': !cfdUseCustomDate() }}
+              onClick={() => setCfdUseCustomDate(true)}
+              data-testid="date-custom"
+            >
+              Custom
+            </button>
+            <Show when={cfdUseCustomDate()}>
+              <input
+                type="date"
+                class="px-2 py-1 text-xs bg-surface border border-base rounded-md text-primary"
+                data-testid="date-custom-from"
+                value={cfdCustomFrom() ?? ''}
+                onChange={(e) => setCfdCustomFrom(e.currentTarget.value)}
+              />
+              <span class="text-xs text-secondary">to</span>
+              <input
+                type="date"
+                class="px-2 py-1 text-xs bg-surface border border-base rounded-md text-primary"
+                data-testid="date-custom-to"
+                value={cfdCustomTo() ?? ''}
+                onChange={(e) => setCfdCustomTo(e.currentTarget.value)}
+              />
+            </Show>
+          </div>
+          <CFDPanel
+            data={cfdQuery.data ?? null}
+            loading={cfdQuery.isLoading}
+            error={cfdQuery.error as Error | null}
+            dateRange={cfdUseCustomDate() && cfdCustomFrom() && cfdCustomTo() ? `${Math.ceil((new Date(cfdCustomTo()!).getTime() - new Date(cfdCustomFrom()!).getTime()) / (1000 * 60 * 60 * 24))}` : `${cfdRange()}`}
+            onRetry={() => cfdQuery.refetch()}
+          />
         </div>
-        <CFDPanel
-          data={cfdQuery.data ?? null}
-          loading={cfdQuery.isLoading}
-          error={cfdQuery.error as Error | null}
-        />
       </Show>
 
       <Show when={activeTab() === 'cycle-time'}>

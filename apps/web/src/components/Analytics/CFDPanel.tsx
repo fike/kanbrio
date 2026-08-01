@@ -8,6 +8,8 @@ interface CFDPanelProps {
   data: CFDResponse | null;
   loading: boolean;
   error: Error | null;
+  dateRange: string;
+  onRetry: () => void;
 }
 
 export function CFDPanel(props: CFDPanelProps) {
@@ -78,10 +80,13 @@ export function CFDPanel(props: CFDPanelProps) {
   return (
     <div class="w-full p-4 bg-surface border border-base rounded-lg shadow-sm flex flex-col gap-4" data-testid="analytics-chart-card">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-primary">Cumulative Flow Diagram</h3>
+        <div class="flex flex-col gap-0.5">
+          <h3 class="text-sm font-semibold text-primary">Cumulative Flow Diagram</h3>
+          <span class="text-[11px] text-secondary">Last {props.dateRange} days</span>
+        </div>
       </div>
 
-      <div class="w-full h-[300px] relative">
+      <div class="w-full h-[300px] relative" data-testid="chart-area">
         <Show when={props.loading}>
           <div class="absolute inset-0 flex items-center justify-center bg-surface/80 z-10" data-testid="chart-loading-overlay">
             <div class="flex flex-col items-center gap-2">
@@ -92,8 +97,15 @@ export function CFDPanel(props: CFDPanelProps) {
         </Show>
 
         <Show when={!props.loading && props.error}>
-          <div class="bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3" data-testid="chart-error-banner">
-            <span>Failed to load CFD data</span>
+          <div class="bg-status-blocked/10 border border-status-blocked/20 text-status-blocked text-xs rounded-md p-3 flex items-center justify-between" data-testid="chart-error-banner" role="alert">
+            <span>Failed to load chart data</span>
+            <button
+              class="text-accent-primary hover:text-accent-primary/95 font-semibold underline underline-offset-2"
+              data-testid="chart-retry-button"
+              onClick={() => props.onRetry()}
+            >
+              Retry
+            </button>
           </div>
         </Show>
 
@@ -104,7 +116,12 @@ export function CFDPanel(props: CFDPanelProps) {
           </div>
         </Show>
 
-        <canvas ref={canvasRef} class="w-full h-full" />
+        <canvas
+          ref={canvasRef}
+          class="w-full h-full"
+          role="img"
+          aria-label={`Cumulative Flow Diagram showing card counts per column over the last ${props.dateRange} days`}
+        />
       </div>
     </div>
   );
