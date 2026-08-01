@@ -102,7 +102,7 @@ export function CFDPanel(props: CFDPanelProps) {
             <button
               class="text-accent-primary hover:text-accent-primary/95 font-semibold underline underline-offset-2"
               data-testid="chart-retry-button"
-              onClick={props.onRetry}
+              onClick={() => props.onRetry()}
             >
               Retry
             </button>

@@ -474,10 +474,7 @@ impl BoardAnalytics {
                 None => continue,
             };
             if tx_date >= from && tx_date <= to {
-                transitions_by_date
-                    .entry(tx_date)
-                    .or_default()
-                    .push(tx);
+                transitions_by_date.entry(tx_date).or_default().push(tx);
             }
         }
 
